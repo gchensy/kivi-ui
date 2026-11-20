@@ -1,19 +1,33 @@
 """FastAPI application."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from . import __version__
+from . import __version__, model_jobs  # noqa: F401  (registers job handlers)
 from .config import get_settings
 from .errors import install_error_handlers
-from .routes import analytics, audit_logs, auth, datasets, indicators, users
+from .jobs import Worker
+from .routes import analytics, audit_logs, auth, datasets, indicators, models, users
 
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    worker = Worker() if get_settings().run_worker else None
+    if worker:
+        worker.start()
+    yield
+    if worker:
+        worker.stop()
 
 
 def create_app() -> FastAPI:
     get_settings()  # fail fast on invalid configuration
     app = FastAPI(
+        lifespan=lifespan,
         title="kivi-ui API",
         version=__version__,
         description="Risk data, indicator, model and strategy management, powered by kivi.",
@@ -38,7 +52,7 @@ def create_app() -> FastAPI:
         return await call_next(request)
 
     api = APIRouter(prefix="/api/v1")
-    for module in (auth, users, audit_logs, analytics, datasets, indicators):
+    for module in (auth, users, audit_logs, analytics, datasets, indicators, models):
         api.include_router(module.router)
 
     @api.get("/health", tags=["meta"])

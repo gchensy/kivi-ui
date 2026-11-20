@@ -1,6 +1,7 @@
 import os
 
 os.environ["KIVI_ENV"] = "test"
+os.environ["KIVI_RUN_WORKER"] = "false"
 os.environ.setdefault("KIVI_DATABASE_URL", "postgresql+psycopg://kivi:kivi@127.0.0.1:5433/kivi_test")
 
 import numpy as np  # noqa: E402
@@ -18,7 +19,10 @@ from kivi_ui.security import hash_password  # noqa: E402
 
 PASSWORD = "Passw0rd-test"
 # CASCADE also covers the indicators <-> binning_schemes foreign key cycle.
-TABLES = "binning_schemes, indicators, dataset_columns, datasets, audit_logs, analytics_snapshots, users"
+TABLES = (
+    "model_reviews, model_versions, risk_models, jobs, binning_schemes, indicators, dataset_columns,"
+    " datasets, audit_logs, analytics_snapshots, users"
+)
 
 
 def reset_data_schema(connection) -> None:

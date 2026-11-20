@@ -17,8 +17,9 @@ from kivi.binning import bin_edges
 from kivi.evaluate import psi_table
 from kivi.woe import woe_table
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_auc_score, roc_curve
 
+from .metrics import gains as _gains
+from .metrics import roc as _roc
 from .sample import CATEGORIES, FEATURES, Feature
 
 TRAIN_MONTHS = 9
@@ -146,19 +147,6 @@ def _score(probability: np.ndarray) -> np.ndarray:
     return np.round(OFFSET + FACTOR * np.log((1 - p) / p))
 
 
-def _roc(target: pd.Series, risk: np.ndarray, points: int = 41) -> dict[str, Any]:
-    fpr, tpr, _ = roc_curve(target, risk)
-    grid = np.linspace(0, 1, points)
-    curve = np.interp(grid, fpr, tpr)
-    auc = roc_auc_score(target, risk)
-    return {
-        "auc": _f(auc),
-        "ks": _f(np.max(tpr - fpr)),
-        "gini": _f(2 * auc - 1),
-        "curve": [{"fpr": _f(x, 3), "tpr": _f(y, 4)} for x, y in zip(grid, curve, strict=True)],
-    }
-
-
 def _band_codes(score: pd.Series) -> pd.Series:
     return pd.Series(pd.cut(score, SCORE_BANDS, labels=False, right=False), index=score.index)
 
@@ -179,33 +167,6 @@ def _bands(score: pd.Series, target: pd.Series) -> list[dict]:
                 "share": _f(n / len(score)),
                 "bad": bad,
                 "bad_rate": _f(bad / n if n else None),
-            }
-        )
-    return rows
-
-
-def _gains(score: pd.Series, target: pd.Series, groups: int = 10) -> list[dict]:
-    order = np.argsort(score.to_numpy(), kind="stable")  # riskiest first
-    s, y = score.to_numpy()[order], target.to_numpy()[order]
-    chunks = np.array_split(np.arange(len(s)), groups)
-    total_bad, total_good = y.sum(), len(y) - y.sum()
-    rows, cum_bad, cum_good = [], 0, 0
-    for i, idx in enumerate(chunks, start=1):
-        bad = int(y[idx].sum())
-        good = len(idx) - bad
-        cum_bad, cum_good = cum_bad + bad, cum_good + good
-        rows.append(
-            {
-                "decile": i,
-                "min_score": int(s[idx].min()),
-                "max_score": int(s[idx].max()),
-                "count": len(idx),
-                "bad": bad,
-                "bad_rate": _f(bad / len(idx)),
-                "cum_bad_pct": _f(cum_bad / total_bad),
-                "cum_good_pct": _f(cum_good / total_good),
-                "ks": _f(cum_bad / total_bad - cum_good / total_good),
-                "lift": _f((bad / len(idx)) / (total_bad / len(y))),
             }
         )
     return rows

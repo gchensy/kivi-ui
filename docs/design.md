@@ -78,9 +78,11 @@
 - 管理员后台：创建账户、分配角色、禁用/启用、重置密码。
 - 首个管理员通过命令行创建：`uv run kivi-ui create-admin`；演示环境自动生成。
 
-### 3.2 风控总览（P1 先用演示数据出完整可视化，P5 接入真实数据）
-- KPI 卡片（BoardUI Stat Cards）：今日决策量、通过率、拒绝率、人工审核率、在线模型数、未处理预警数。
-- 图表卡：近 30 天决策量 & 通过率趋势；在线模型分数 PSI 走势；最新预警列表；待我审批列表。
+### 3.2 风控总览（P1 先用演示数据出完整可视化，P5 接入真实数据 ✅）
+- P5 起全部来自真实数据（`GET /overview`），P1 的模拟快照（`analytics_snapshots`）已移除。
+- KPI 卡片：近 30 天决策量与通过率（对比前 30 天，按 `KIVI_TIMEZONE` 的自然日）、在线模型 AUC/KS（OOT 对比训练集）、最新分数 PSI（来自该模型的分数 PSI 监控）、未解决预警数。
+- 图表卡：每日决策；预警列表；流量最大的在线策略近 30 天规则命中与独占命中（来自决策记录的 `hit_rules`）；该策略在线版本的回测坏账率；各启用监控的最新结果与趋势小图。
+- 模型取该策略引用的在线模型，没有则取最近上线的模型。
 
 ### 3.3 数据管理（P2）
 - **数据集**：上传 CSV / Parquet（BoardUI File Upload）→ 落库到 `kivi_data.ds_<id>`；或登记平台库内已有表 / 只读 SQL 视图。
@@ -148,13 +150,21 @@
 - **决策记录**（P4）：分页查询，按策略、决策、来源、命中规则、请求号前缀筛选，查看请求数据与单笔执行轨迹；名单字段在请求数据与轨迹中都只保存脱敏值。
 - **名单管理**（P4）：黑 / 白 / 灰名单，维度（手机号 / 身份证号 / 设备号 / IP / 企业代码 / 账号 / 其他），批量导入、有效期、原因、精确查找。值先规范化（去掉空格与短横线、转大写，整数形式的浮点数去掉 `.0`）再做 HMAC-SHA256（密钥 `KIVI_LIST_KEY`，默认同会话密钥）并脱敏展示（如 `138****1234`），原值不落库；移除条目需确认，因为原值无法再查看。
 - **API 令牌**（P4）：管理员创建（可设有效期，明文只显示一次）、查看最近使用时间、吊销。
-- **监控**：
-  | 对象 | 指标 | 计算 | 默认阈值（预警 / 告警） |
+- **监控**（P5）：
+  | 检查 | 对象 | 计算 | 默认阈值（预警 / 告警） |
   | --- | --- | --- | --- |
-  | 指标 | PSI | 已保存分箱规则 + `psi_table` | 0.10 / 0.25 |
-  | 模型 | 分数 PSI、AUC、KS | `lift_compare`、`BinaryEvaluation` | PSI 0.10 / 0.25；KS 下降 10% / 20% |
-  | 策略 | 通过率、规则命中率 | 决策记录按窗口聚合 | 相对基线偏移 ±5pp / ±10pp |
-  - 按 cron 由 worker 定时执行，也可手动运行；超阈值生成**预警**，进入预警中心（BoardUI Notification Center），可认领 / 处理 / 关闭。
+  | `indicator_psi` 变量 PSI | 模型入模变量（跟随在线版本），或指定指标的默认分箱方案 | 每月相对基准期的 PSI（`psi_table`），取最大值 | 0.10 / 0.25 |
+  | `score_psi` 分数 PSI | 在线模型 | 在数据集上重新打分，按训练期十等分切点分组后逐月 PSI | 0.10 / 0.25 |
+  | `model_ks` 区分度 | 在线模型（需目标列） | 最新有标签月份的 KS 相对基准期 KS 的下降比例 | 10% / 20% |
+  | `approval_rate` 通过率变化 | 策略 | 最近 N 天（默认 7）通过率减去此前 M 天（默认 30）的基线 | ±5pp / ±10pp |
+  | `rule_hit_rate` 规则命中率变化 | 策略在线版本的启用规则 | 每条规则窗口命中率减基线，取变化最大者 | ±5pp / ±10pp |
+  - 数据集检查按日期列分月，基准期默认取模型训练月份（数据集即训练集时），否则取前一半月份，也可指定起止月份；头条值取最新月份。决策检查少于最少决策数（默认 30）时本次运行记为失败（`too_few_requests`），不改变预警。
+  - 计划：每小时 / 每天 / 每周的本地时间（`KIVI_TIMEZONE`，默认 Asia/Shanghai），或仅手动。worker 每 30 秒检查一次到期监控（`FOR UPDATE SKIP LOCKED` 领取并先推进 `next_run_at`，多进程不会重复运行）；「立即运行」同步执行并返回结果。
+  - 每次运行写入 `monitor_runs`（头条值、级别、逐月或逐日序列、失败原因码）。
+- **预警中心**（P5）：
+  - 每个监控同时只有一条未解决预警（部分唯一索引）。预警 / 告警级别的运行会新建预警，或更新已有预警的级别、数值与出现次数（记录升级 / 降级事件）；正常运行自动关闭（`recovered`）；失败运行不改变预警。
+  - 状态：待认领 → 处理中（认领人 = 操作者）→ 已解决（需填写说明）；之后再次超标会生成新预警。全程事件写入 `alerts.events` 并记审计日志。侧栏显示未解决数量。
+- **稳定性监控页**（P5）：按模型汇总分数 PSI、区分度、入模变量 PSI 三类监控的最新运行，按月份对齐。
 
 ### 3.8 系统管理（P1 起）
 - 用户与角色、API Token、审计日志（谁在何时对什么对象做了什么，含前后差异）、系统参数（注册模式、阈值默认值）。
@@ -224,11 +234,16 @@ risk_list_items    id, list_id, value_hash, value_masked, reason, expires_at, cr
 decision_logs      id bigserial, request_id UQ, strategy_version_id, decision, hit_rules jsonb, scores jsonb,
                    input jsonb (敏感字段脱敏), latency_ms, created_at       -- 后续按月分区
 
-monitors           id, name, target_type(indicator|model|strategy), target_id, metric, params jsonb,
-                   thresholds jsonb, schedule (cron), enabled, next_run_at, created_by
-monitor_runs       id, monitor_id, value, level(normal|warn|alert), detail jsonb, run_at
-alerts             id, monitor_run_id, level, title, status(open|acknowledged|resolved),
-                   assignee_id, resolved_by, resolved_at, note, created_at
+monitors           id, name, kind(indicator_psi|score_psi|model_ks|approval_rate|rule_hit_rate),
+                   model_id, strategy_id, dataset_id, params jsonb, thresholds jsonb {warn, alert},
+                   schedule jsonb {freq, hour, minute, weekday}, enabled, next_run_at,
+                   last_run_at, last_level, last_value, owner_id
+monitor_runs       id, monitor_id, trigger(schedule|manual|seed), status(done|failed), level(normal|warn|alert|error),
+                   value, detail jsonb (序列、最差项、失败原因码), error, seconds, created_at
+alerts             id, monitor_id, run_id, status(open|acknowledged|resolved), level, peak_level, value, threshold,
+                   detail jsonb, occurrences, first_seen_at, last_seen_at, assignee_id, acknowledged_at,
+                   resolved_by, resolved_at, resolution(manual|recovered), note, events jsonb
+                   -- 部分唯一索引：每个 monitor 至多一条 status <> 'resolved'
 
 jobs               id, kind(profile|binning|batch_binning|train|score|backtest|monitor), status(queued|running|done|failed),
                    params jsonb, result jsonb, error, progress, created_by, created_at, started_at, finished_at
@@ -250,8 +265,8 @@ jobs               id, kind(profile|binning|batch_binning|train|score|backtest|m
 | 策略 | `GET/POST strategies` · `GET strategies/fields` · `GET/PATCH/DELETE strategies/{id}` · `POST strategies/{id}/versions` · `GET/PUT/DELETE strategy-versions/{id}` · `POST strategy-versions/{id}/backtest` · `POST strategy-versions/{id}/evaluate`（试算）· `POST strategy-versions/{id}/{submit\|approve\|reject\|online\|retire}` |
 | 决策 | `POST decide/{strategy_code}`（API Token）· `GET decisions` · `GET decisions/{request_id}` |
 | 名单 | `GET/POST risk-lists` · `GET/PATCH/DELETE risk-lists/{id}` · `GET/POST risk-lists/{id}/items`（POST 为批量导入）· `DELETE risk-lists/{id}/items/{item_id}` · `POST risk-lists/{id}/check` |
-| 监控 | `GET/POST monitors` · `PATCH/DELETE monitors/{id}` · `POST monitors/{id}/run` · `GET monitors/{id}/runs` · `GET alerts` · `PATCH alerts/{id}` |
-| 其他 | `GET dashboard/summary` · `GET audit-logs` · `GET jobs/{id}` · `GET kivi/methods`（可用分箱方法） |
+| 监控 | `GET/POST monitors` · `GET/PATCH/DELETE monitors/{id}`（详情含最新运行与最近 30 次运行）· `POST monitors/{id}/run`（同步）· `GET monitor-runs/{id}` · `GET alerts`（`status=active\|open\|acknowledged\|resolved`、`level`、`monitor_id`）· `GET alerts/{id}` · `POST alerts/{id}/acknowledge` · `POST alerts/{id}/resolve` |
+| 其他 | `GET overview` · `GET stability?model_id=` · `GET audit-logs` · `GET jobs/{id}` · `GET kivi/methods`（可用分箱方法） |
 
 列表接口统一 `?page=&size=&q=&sort=`，返回 `{items, total}`；错误统一 `{code, message, detail}`。耗时操作返回 `202 + job_id`，前端轮询 `jobs/{id}`。
 
@@ -286,7 +301,7 @@ jobs               id, kind(profile|binning|batch_binning|train|score|backtest|m
 /models/[id]              版本列表          /models/[id]/v/[ver]   指标 · 系数 · 效果 · 审批记录
 /strategies               策略列表          /strategies/[id]/v/[ver] 规则编辑 · 回测 · 审批记录
 /decisions                决策记录          /lists  /lists/[id]    名单管理
-/risk/monitors            监控配置          /risk/alerts           预警中心
+/monitors  /monitors/[id] 监控配置        /alerts                预警中心
 /admin/users  /admin/tokens  /admin/audit
 ```
 未登录访问任何页面重定向 `/login`（Next middleware 检查 Cookie + 客户端 `auth/me`）；按角色隐藏无权限入口，后端为最终鉴权。
@@ -361,7 +376,7 @@ kivi-ui/
 | **P2 数据与指标** ✅ | 数据集上传/预览/画像、指标目录、分箱工作台（7 种方法 + 特殊值）、多方案与默认方案、按月 PSI、批量筛选与一键登记 | 上传 bank 数据，看到 age 的 WOE/IV 图表并保存分箱方案 |
 | **P3 模型** ✅ | 后台任务队列、评分卡向导、版本详情（AUC/KS/ROC/Lift）、审批与上线、批量打分 | 训练评分卡并走完提交—审批—上线 |
 | **P4 策略与决策** ✅ | 规则 DSL 与编辑器、回测与版本对比、名单、决策 API、决策记录、API Token | 用 curl 调决策接口得到命中规则与模型分 |
-| **P5 监控与总览** | 监控配置与调度、预警中心、风控总览真实数据 | 改动样本触发 PSI 预警并在总览出现 |
+| **P5 监控与总览** ✅ | 监控配置与调度、预警中心、风控总览真实数据 | 改动样本触发 PSI 预警并在总览出现 |
 
 每期结束都能独立运行，并在浏览器里实际走通后再进入下一期。
 
@@ -380,3 +395,4 @@ kivi-ui/
 9. P2 的上传、画像与分箱均为同步请求（单次上限 20 MB / 50 万行）；后台任务队列推迟到 P3，用于模型训练等耗时操作。分箱规则以 kivi-ui 自己的 JSON（切点、特殊值、类别映射）存储在 `binning_schemes.rule`。
 10. P3 的逻辑回归、p 值与 VIF 使用 statsmodels（kivi 0.4 不含建模接口）；分箱在训练集上用各指标默认方案的参数重新拟合；四眼原则同时约束作者与提交人；角色权限仅保留管理员（审批、上线、下线）与分析师（开发、提交）。
 11. P4 的规则引擎为 kivi-ui 自研（kivi 不含规则执行）：一套 pandas 向量化实现同时服务回测、试算与实时接口；策略生命周期与模型共用 `routes/lifecycle.py`（先校验角色，再校验状态，最后校验四眼原则）。名单只存 HMAC 摘要；决策记录的请求数据与轨迹对名单字段脱敏。文本取值与数值列比较时，回测按列的存储类型比较，实时接口按请求里的 JSON 类型比较，数值字段应传数字。
+12. P5 不引入 cron 表达式与新依赖：计划只支持每小时 / 每天 / 每周 / 手动，时间按 `KIVI_TIMEZONE` 解释，用 `zoneinfo` 换算并在夏令时切换时保持本地时间；调度由现有 worker 的定时回调完成，「立即运行」同步执行。区分度监控在库里存 KS 的相对下降（正数表示变差），界面显示为相对基准期的变化（下降 10% 显示为 −10%）。P1 的模拟分析快照与 `build-analytics` 命令已删除，风控总览与稳定性页改用真实数据。

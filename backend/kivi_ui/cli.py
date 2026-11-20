@@ -15,9 +15,9 @@ from .schemas import UserCreateIn
 from .security import hash_password
 
 DEMO_USERS = (
-    ("admin", "admin@example.com", "平台管理员", Role.admin, UserStatus.active),
-    ("analyst", "analyst@example.com", "风控分析师", Role.analyst, UserStatus.active),
-    ("newcomer", "newcomer@example.com", "新注册用户", Role.analyst, UserStatus.pending),
+    ("admin", "admin@example.com", "王磊", Role.admin, UserStatus.active),
+    ("analyst", "analyst@example.com", "李晓雯", Role.analyst, UserStatus.active),
+    ("newcomer", "newcomer@example.com", "赵晨", Role.analyst, UserStatus.pending),
 )
 
 

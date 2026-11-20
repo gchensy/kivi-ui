@@ -1,0 +1,69 @@
+/* ---------------------------------------------------------------------------
+ * kivi-ui chart tokens
+ *
+ * Validated with the dataviz palette validator against BoardUI's chart-card
+ * surface (background-secondary: #f7f7f7 light, #171717 dark):
+ *   categorical  blue / orange: adjacent CVD ΔE ≥ 24, normal ΔE ≥ 31 (both modes)
+ *   light orange is 2.99:1 on the surface, so every chart also has a table view
+ *   status       good / warning / serious / critical, always with icon + label
+ *   sequential   one blue hue, light→dark (dark mode starts at step 600)
+ *   diverging    blue ↔ red with a neutral midpoint (WOE sign)
+ * Dark mode is its own selected steps, flipped by BoardUI's `.dark` class.
+ * --------------------------------------------------------------------------- */
+
+:root {
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-neutral: #b9b8b2;
+  --viz-grid: #e4e4e1;
+  --viz-axis: #c9c8c1;
+  --viz-tick: #898781;
+
+  --viz-good: #0ca30c;
+  --viz-warning: #fab219;
+  --viz-serious: #ec835a;
+  --viz-critical: #d03b3b;
+
+  --viz-pos: #e34948; /* diverging: higher risk */
+  --viz-neg: #2a78d6; /* diverging: lower risk */
+
+  --viz-seq-0: #eeeeec;
+  --viz-seq-1: #cde2fb;
+  --viz-seq-2: #86b6ef;
+  --viz-seq-3: #3987e5;
+  --viz-seq-4: #1c5cab;
+  --viz-seq-ink-0: #52514e;
+  --viz-seq-ink-1: #0b0b0b;
+  --viz-seq-ink-2: #0b0b0b;
+  --viz-seq-ink-3: #ffffff;
+  --viz-seq-ink-4: #ffffff;
+}
+
+.dark {
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-neutral: #5d5c57;
+  --viz-grid: #2a2a29;
+  --viz-axis: #3a3a37;
+  --viz-tick: #898781;
+
+  --viz-pos: #e66767;
+  --viz-neg: #3987e5;
+
+  --viz-seq-0: #222221;
+  --viz-seq-1: #184f95;
+  --viz-seq-2: #256abf;
+  --viz-seq-3: #3987e5;
+  --viz-seq-4: #86b6ef;
+  --viz-seq-ink-0: #c3c2b7;
+  --viz-seq-ink-1: #ffffff;
+  --viz-seq-ink-2: #ffffff;
+  --viz-seq-ink-3: #ffffff;
+  --viz-seq-ink-4: #0b0b0b;
+}
+
+/* Recharts focus outlines are drawn by our own hover states instead. */
+.recharts-wrapper svg:focus,
+.recharts-surface:focus {
+  outline: none;
+}

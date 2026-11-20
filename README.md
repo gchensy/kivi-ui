@@ -1,212 +1,210 @@
+<div align="center">
+
+<img src="docs/assets/logo.svg" width="84" alt="kivi-ui logo">
+
 # kivi-ui
 
-[中文](#中文) · [English](#english)
+**The open-source credit risk platform: data → indicators → scorecards → strategies → monitoring**
 
----
-
-## 中文
+Upload a sample, bin and screen its variables, train and approve a scorecard,<br>
+put a rule strategy online behind a real-time API, and watch it drift: in one place, with an audit trail.
 
 [![CI](https://github.com/gchensy/kivi-ui/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gchensy/kivi-ui/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Pydantic%20v2-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Next.js 16](https://img.shields.io/badge/Next.js-16-111111?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![PostgreSQL 18](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Powered by kivi](https://img.shields.io/pypi/v/kivi?label=powered%20by%20kivi&color=2b7fff)](https://github.com/gchensy/kivi)
+[![License: MIT](https://img.shields.io/badge/license-MIT-0b7a70)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/gchensy/kivi-ui?style=social)](https://github.com/gchensy/kivi-ui)
 
-**kivi-ui** 是一个开源的金融风控管理平台，覆盖「数据 → 指标 → 模型 → 策略 → 风控监控」全链路。分箱、WOE、IV、PSI 等统计计算由 [kivi](https://github.com/gchensy/kivi) 完成，界面基于 [BoardUI](https://github.com/BoardUI/boardui) 设计体系。
+**English** · [简体中文](README.zh-CN.md)
 
-### 功能
+[Highlights](#-highlights) ·
+[Gallery](#-gallery) ·
+[Quick start](#-quick-start) ·
+[Decision API](#-real-time-decisions) ·
+[Architecture](#%EF%B8%8F-architecture) ·
+[Roadmap](#%EF%B8%8F-roadmap)
 
-- **账户**：登录、注册（默认需管理员审核）、退出、修改密码、个人资料；连续 5 次失败锁定 15 分钟
-- **角色**：管理员、分析师；管理员可创建账户、激活注册、调整角色、停用、重置密码
-- **审计日志**：登录、注册、账户变更以及数据与指标操作全程留痕
-- **数据管理**：上传 CSV（自动识别分隔符、UTF-8/GBK 编码、字段类型、目标列、日期列与主键），按月统计样本量与坏样本率，字段画像与快速 IV，数据预览
-- **指标筛选**：用同一种分箱方法批量计算所有特征的 IV，一键把有预测力的字段登记为指标
-- **指标管理**：指标目录（分类、状态、口径、中英文名称）；分箱工作台支持等频、等距、卡方合并、决策树、单调 WOE、手工切点与类别分组，并支持特殊值单独成箱；保存多个分箱方案并指定默认方案；按月计算 PSI 稳定性
-- **风控总览**：全部来自真实数据——近 30 天决策量与通过率（对比前 30 天）、在线模型 AUC/KS、最新分数 PSI、未解决预警；每日决策、在线策略的规则命中与回测效果、各监控的最新结果与趋势
-- **模型管理**：评分卡训练向导（OOT 与测试集划分、在训练集上重拟合分箱、IV → VIF → 系数符号 → 显著性逐步筛选、PDO 刻度），后台任务队列训练；版本报告含各样本 AUC/KS/Gini、ROC、KS 曲线、分数分布与 PSI、系数与 p 值、VIF、变量稳定性、评分卡分值与筛选记录
-- **评审与上线**：草稿 → 待审批 → 已批准 → 已上线 → 已下线，四眼原则（作者与提交人不能审批），每个模型只有一个在线版本，全程评审记录；批量打分生成新的数据集
-- **策略管理**：规则编辑器（全部/任一条件组可嵌套，13 种运算符，可引用在线模型的分数与违约概率、名单，终止规则用于白名单）；策略版本沿用评审上线流程；在带标签的数据集上回测，给出决策分布、各决策坏账率、规则命中/独占/决定数、月度通过率，以及与另一版本的切换矩阵；单笔试算展示每个条件的实际值
-- **名单管理**：黑名单、白名单、灰名单，按手机号、身份证号、设备号等维度；原值只保存 HMAC 摘要并脱敏展示，支持批量导入、有效期和精确查找（空格、短横线不影响匹配）
-- **实时决策接口**：`POST /api/v1/decide/{策略编码}`，API 令牌鉴权（只保存哈希），请求号幂等重放，在线策略缓存在内存中、上线和名单变更即时生效；每次调用写入决策记录
-- **决策记录**：按策略、决策、来源、命中规则、请求号筛选，查看请求数据（名单字段脱敏）与执行轨迹
-- **监控配置**：五种检查——变量 PSI、分数 PSI、区分度（KS 相对基准期的变化）、通过率变化、规则命中率变化；基准期默认取模型训练月份；预警与告警两级阈值；每小时、每天、每周或仅手动运行，也可立即运行，保留运行记录
-- **预警中心**：监控超过阈值自动生成预警，同一监控只保留一条未解决预警（再次超标时更新级别与次数）；认领后填写说明处理完成，指标恢复后自动关闭，全程留痕；侧栏显示未解决数量
-- **稳定性监控**：按模型汇总监控结果——月度分数 PSI、月度 AUC/KS、入模变量 × 月份 PSI 热力图与相关预警
-- **中英双语、明暗主题** 一键切换；所有图表都可切换为表格查看
+</div>
 
-演示数据为模拟的零售信贷申请样本（12 个月、约 2.4 万笔，最后三个月带有渠道与查询次数漂移），首次启动即有完整的分析结果、一个已上线的准入策略、近 30 天的决策记录，以及已运行的监控和预警。
+<br>
 
-### 技术栈
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/en/overview-dark.webp">
+    <img src="docs/assets/screenshots/en/overview.webp" width="100%" alt="kivi-ui risk overview: 30-day decisions and approval rate, model AUC and KS, score PSI, unresolved alerts and daily decisions">
+  </picture>
+</p>
 
-| 层 | 技术 |
-| --- | --- |
-| 后端 | Python 3.11+ · FastAPI · Pydantic v2 · SQLAlchemy 2 · Alembic · psycopg 3 |
-| 计算 | kivi 0.4（`bin_edges`、`cut`、`chimerge_edges`、`tree_edges`、`monotonic_edges`、`woe_table`、`psi_table`）· statsmodels（逻辑回归、p 值、VIF）· scikit-learn（ROC） |
-| 数据库 | PostgreSQL 18 |
-| 前端 | Next.js 16 · React 19 · Tailwind CSS v4 · React Aria · TanStack Query · Recharts · BoardUI |
+## ✨ Highlights
 
-### 快速开始
+- 🗂️ **Data in, profiled in seconds.** Upload a CSV and kivi-ui works out the delimiter, UTF-8 or GBK encoding, column types, the target and the date column. You get monthly volume and bad rate, column profiles and a quick IV for every feature.
+- 📏 **Indicators you can defend.** A binning workbench built on [kivi](https://github.com/gchensy/kivi): quantile, uniform, ChiMerge, decision tree, monotonic WOE, manual cut points and category groups, with special values in their own bins. Save several schemes per indicator and track monthly PSI.
+- 🧮 **Scorecards without notebooks.** A training wizard with out-of-time and test splits, stepwise IV → VIF → coefficient sign → p-value selection and PDO scaling, run on a background job queue. Reports show AUC, KS and Gini per split, ROC and KS curves, deciles, coefficients, VIF and variable stability.
+- 🛡️ **Governed releases.** Models and strategies move from draft to in review, approved, online and retired. Four-eyes approval applies, and each model or strategy has one online version. Every step lands in the audit log.
+- ⚖️ **Strategies with evidence.** A rule editor over request fields, model scores and watchlists, with terminal whitelist rules. Backtests show the decision mix, bad rate per decision, hits and exclusive hits per rule, monthly approval and a swap matrix against the live version.
+- ⚡ **Real-time decisions.** `POST /api/v1/decide/{code}` with hashed API tokens and idempotent request IDs. The decision log keeps every call with its trace, watchlist fields masked.
+- 📡 **Monitoring that raises its hand.** Scheduled feature PSI, score PSI, KS, approval-rate and rule-hit checks. Alerts are claimed and resolved in an alert centre, close themselves when the metric recovers, and feed a live overview.
+- 🌗 **Bilingual, light and dark.** Every page is available in English and Chinese, in light and dark themes, and every chart has a table view.
 
-需要 Docker、[uv](https://docs.astral.sh/uv/)、Node.js 20+ 和 pnpm。
+## 🧭 How it fits together
 
-1. 启动数据库（Docker，监听 `127.0.0.1:5433`）：
+<p align="center">
+  <img src="docs/assets/platform.svg" width="100%" alt="Data, indicators, scorecards, decisions and monitors in sequence; drift and alerts feed the next indicator scheme, model version and strategy version">
+</p>
 
-   ```bash
-   scripts/dev-db.sh start
-   ```
+## 📸 Gallery
 
-2. 启动后端（`http://127.0.0.1:8000`，接口文档在 `/api/docs`）：
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/screenshots/en/backtest.webp"><img src="docs/assets/screenshots/en/backtest.webp" alt="Strategy backtest with rule hits, monthly approval and a swap matrix"></a>
+      <br><b>Backtest and compare</b>: rule hits, exclusive and decisive counts, bad rate of hits, monthly approval and the v1 → v2 swap matrix.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/screenshots/en/rules.webp"><img src="docs/assets/screenshots/en/rules.webp" alt="Rule editor with nested conditions on fields, model scores and watchlists"></a>
+      <br><b>Rule editor</b>: nested all/any groups over request fields, <code>model:RETAIL_APP.score</code> and watchlists, with terminal rules.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/screenshots/en/model.webp"><img src="docs/assets/screenshots/en/model.webp" alt="Scorecard version report with AUC, KS and Gini per split, ROC and KS curves"></a>
+      <br><b>Scorecard report</b>: AUC, KS and Gini for training, test and out-of-time samples, with ROC and KS curves.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/screenshots/en/binning.webp"><img src="docs/assets/screenshots/en/binning.webp" alt="Binning workbench with WOE and bad rate per bin"></a>
+      <br><b>Binning workbench</b>: WOE, bad rate and share per bin for every method, saved as reusable schemes.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/screenshots/en/monitor.webp"><img src="docs/assets/screenshots/en/monitor.webp" alt="Feature PSI monitor with a feature by month heatmap"></a>
+      <br><b>Monitors</b>: feature PSI by month against the training period, with run history and thresholds.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/screenshots/en/alerts.webp"><img src="docs/assets/screenshots/en/alerts.webp" alt="Alert centre with an alert claimed and its history"></a>
+      <br><b>Alert centre</b>: one alert per monitor; claim it, resolve it with a note, or let recovery close it.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/screenshots/en/stability.webp"><img src="docs/assets/screenshots/en/stability.webp" alt="Stability page with monthly AUC and KS and a feature PSI heatmap"></a>
+      <br><b>Stability</b>: monthly AUC and KS and a model feature × month PSI heatmap, lined up per model.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/screenshots/en/decision.webp"><img src="docs/assets/screenshots/en/decision.webp" alt="Decision log entry with masked request data and a rule trace"></a>
+      <br><b>Decision trace</b>: every API call with its masked request, model score and the rules it hit.
+    </td>
+  </tr>
+</table>
 
-   ```bash
-   cd backend
-   cp .env.example .env
-   uv sync
-   uv run alembic upgrade head
-   uv run kivi-ui seed-demo
-   uv run uvicorn kivi_ui.main:app --reload
-   ```
+## 🚀 Quick start
 
-3. 启动前端（`http://localhost:3000`）：
+You need Docker, [uv](https://docs.astral.sh/uv/), Node.js 20+ and pnpm.
 
-   ```bash
-   cd web
-   pnpm install
-   pnpm dev
-   ```
+```bash
+# 1. PostgreSQL 18 in Docker, on 127.0.0.1:5433
+scripts/dev-db.sh start
 
-`seed-demo` 会创建演示账户 `admin`（管理员）、`analyst`（分析师）和一个待审核的 `newcomer`，仅供本地演示使用。密码取 `backend/.env` 中的 `KIVI_DEMO_PASSWORD`；留空时会生成随机密码并在命令输出中显示一次。`KIVI_ENV=production` 时该命令拒绝运行。它还会导入两个演示数据集（模拟零售信贷样本、kivi 自带的银行营销样本），登记 12 个指标，训练一个已上线的申请评分卡 RETAIL_APP v1，创建手机号黑名单与白名单，准入策略 RETAIL_APPLY（v1 已上线、v2 草稿，均已回测）、约 2,500 条演示决策记录，以及五个监控（各运行一次，生成两条预警）。演示决策会随日期自动顺延，近 30 天始终有数据。
+# 2. The API on http://127.0.0.1:8000 (docs at /api/docs)
+cd backend
+cp .env.example .env
+uv sync
+uv run alembic upgrade head
+uv run kivi-ui seed-demo          # demo accounts, data, model, strategy and monitors
+uv run uvicorn kivi_ui.main:app --reload
 
-创建正式管理员：
+# 3. The web app on http://localhost:3000
+cd ../web
+pnpm install
+pnpm dev
+```
+
+`seed-demo` creates the accounts `admin` (administrator) and `analyst`, plus a pending sign-up `newcomer`. Their password is `KIVI_DEMO_PASSWORD` from `backend/.env`; leave it empty and a random one is generated and printed once. The command refuses to run with `KIVI_ENV=production`.
+
+<details>
+<summary><b>What the demo contains</b></summary>
+
+<br>
+
+- A simulated retail credit sample (12 months, about 24,000 applications, with channel and credit-inquiry drift in the last three months) and kivi's bank marketing sample.
+- 12 published indicators and the online application scorecard **RETAIL_APP v1** (OOT AUC 0.731).
+- Phone blacklist and whitelist, and the admission strategy **RETAIL_APPLY**: v1 online and v2 draft, both backtested.
+- About 2,500 demo decisions over the last 30 days. They move forward with the calendar, so the overview never empties.
+- Five monitors, each run once: the feature PSI monitor flags `inquiries_6m` (claimed by the analyst), and the rule monitor has an open warning.
+
+</details>
+
+To create a real administrator:
 
 ```bash
 cd backend && uv run kivi-ui create-admin --username alice --email alice@example.com
 ```
 
-### 配置
+## ⚡ Real-time decisions
 
-后端读取 `KIVI_` 前缀的环境变量（见 `backend/.env.example`）：
-
-| 变量 | 说明 | 默认值 |
-| --- | --- | --- |
-| `KIVI_DATABASE_URL` | PostgreSQL 连接串 | `postgresql+psycopg://kivi:kivi@127.0.0.1:5433/kivi` |
-| `KIVI_SECRET_KEY` | 会话签名密钥，生产环境必须设置（≥ 32 字符） | 开发用默认值 |
-| `KIVI_COOKIE_SECURE` | 仅通过 HTTPS 发送会话 Cookie，生产环境必须为 `true` | `false` |
-| `KIVI_SIGNUP_MODE` | `approval` 需审核 / `open` 直接开通 / `closed` 关闭注册 | `approval` |
-| `KIVI_SESSION_HOURS` | 会话有效期（小时） | `8` |
-| `KIVI_REQUIRE_FOUR_EYES` | 作者与提交人不能审批自己的模型版本 | `true` |
-| `KIVI_RUN_WORKER` | 在 API 进程内运行后台任务与监控计划；设为 `false` 时用 `uv run kivi-ui worker` 单独运行 | `true` |
-| `KIVI_TIMEZONE` | 监控运行计划（如「每天 06:00」）与总览按天统计所用的时区（IANA 名称） | `America/Los_Angeles` |
-| `KIVI_LIST_KEY` | 名单摘要的 HMAC 密钥；建议单独设置，更换会话密钥时名单仍然有效 | 同 `KIVI_SECRET_KEY` |
-
-前端通过 `KIVI_API_URL`（默认 `http://127.0.0.1:8000`）把 `/api/*` 反向代理到后端，浏览器与后端始终同源。
-
-### 调用决策接口
-
-管理员在「API 令牌」页面创建令牌（只显示一次），业务系统按策略编码调用：
+An administrator creates an API token under **API tokens**. It is shown once and stored only as a hash. Business systems then call a strategy by its code:
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/decide/RETAIL_APPLY \
   -H "Authorization: Bearer kv_…" \
   -H "Content-Type: application/json" \
-  -d '{"request_id": "APP-0001", "data": {"phone": "13800001234", "age": 35, "inquiries_6m": 2, "overdue_24m": 0, "channel": "app"}}'
+  -d '{
+    "request_id": "APP-20261120-0001",
+    "data": {
+      "phone": "13800001234", "age": 29, "monthly_income": 6500, "debt_ratio": 0.58,
+      "credit_utilization": 0.81, "inquiries_6m": 4, "overdue_24m": 1, "employment_years": 2,
+      "loan_amount": 50000, "loan_term": "24", "housing": "rent", "education": "college", "channel": "partner"
+    }
+  }'
 ```
 
-返回决策（`pass` / `review` / `reject`）、原因码、命中规则、模型分与违约概率、缺失字段和耗时。同一个 `request_id` 再次调用会直接返回第一次的结果（`replayed: true`）。
-
-### 测试
-
-```bash
-cd backend && uv run pytest        # 使用独立的 kivi_test 数据库
-cd web && pnpm typecheck && pnpm build
+```json
+{
+  "request_id": "APP-20261120-0001",
+  "decision": "reject",
+  "reason": "LOW_SCORE",
+  "rules": [
+    { "code": "R05", "name": "评分 < 520", "name_en": "Score below 520", "decision": "reject" },
+    { "code": "R07", "name": "合作渠道且评分 < 590", "name_en": "Partner channel, score < 590", "decision": "review" }
+  ],
+  "scores": { "RETAIL_APP": { "score": 512, "probability": 0.144555 } },
+  "strategy": { "code": "RETAIL_APPLY", "version": 1 },
+  "missing_fields": [],
+  "latency_ms": 16.82,
+  "replayed": false
+}
 ```
 
-### 路线图
+Terminal rules (whitelists) decide first; otherwise the most severe hit wins (reject > review > pass) and every hit is reported. Repeating a `request_id` returns the first answer with `"replayed": true`.
 
-| 阶段 | 内容 | 状态 |
-| --- | --- | --- |
-| P1 | 账户、权限、审计、风控可视化 | ✅ |
-| P2 | 数据集上传与画像、指标筛选、指标目录、分箱工作台与方案、指标稳定性 | ✅ |
-| P3 | 评分卡开发向导、模型版本、评审上线、批量打分、后台任务队列 | ✅ |
-| P4 | 策略规则、回测与版本对比、名单、实时决策接口、决策记录、API 令牌 | ✅ |
-| P5 | 监控配置与计划运行、预警中心、风控总览与稳定性监控接入真实数据 | ✅ |
+## 🏗️ Architecture
 
-完整设计见 [docs/design.md](docs/design.md)。
-
----
-
-## English
-
-[![CI](https://github.com/gchensy/kivi-ui/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gchensy/kivi-ui/actions/workflows/ci.yml)
-
-**kivi-ui** is an open-source credit risk management platform covering data, indicators, models, strategies and monitoring. Binning, WOE, IV and PSI are computed with [kivi](https://github.com/gchensy/kivi); the interface is built on the [BoardUI](https://github.com/BoardUI/boardui) design system.
-
-### Features
-
-- **Accounts**: sign in, sign up (administrator approval by default), sign out, change password, profile; 15-minute lockout after 5 failed attempts
-- **Roles**: administrator and analyst; administrators create accounts, approve sign-ups, change roles, disable accounts and reset passwords
-- **Audit log** of every sign-in, sign-up, account change and data or indicator change
-- **Data**: CSV upload with automatic delimiter, UTF-8/GBK encoding, column type, target, date and ID detection; monthly volume and bad rate; column profiles with quick IV; data preview
-- **Screening**: bin every feature the same way, rank by IV and register the predictive ones as indicators in one click
-- **Indicators**: a catalogue with categories, status, definitions and Chinese/English names; a binning workbench with quantile, equal-width, ChiMerge, decision-tree, monotonic-WOE, manual and category binning, plus special values in their own bins; several saved schemes per indicator with a default; monthly PSI stability
-- **Risk overview**, all from live data: 30-day decisions and approval rate against the 30 days before, online model AUC/KS, the latest score PSI and unresolved alerts; daily decisions, rule hits and backtest effect of the online strategy, and the latest result and trend of every monitor
-- **Models**: a scorecard training wizard (OOT and test splits, binning refitted on training rows, stepwise IV → VIF → coefficient sign → significance selection, PDO scaling) trained by a background job queue; version reports with AUC/KS/Gini per split, ROC, KS curve, score distribution and PSI, coefficients with p-values and VIF, variable stability, scorecard points and the selection log
-- **Review and deployment**: draft → in review → approved → online → retired with four eyes (authors and submitters can't approve), one online version per model and a full review trail; batch scoring saves a new dataset
-- **Strategies**: a rule editor (nested all/any groups, 13 operators, online model scores and default probabilities, watchlists, and terminal rules for whitelists); strategy versions follow the same review flow; backtests on a labelled dataset show the decision mix, bad rate per decision, hits/exclusive/decisive counts per rule, monthly approval rate and a swap matrix against another version; a test console shows the actual value behind every condition
-- **Watchlists**: black, white and grey lists by phone, ID number, device and more; values are kept only as HMAC digests and shown masked, with bulk import, expiry and exact lookup (spaces and dashes don't matter)
-- **Real-time decision API**: `POST /api/v1/decide/{strategy code}` with API tokens (stored hashed), idempotent replay by request ID and an in-memory cache of online strategies that lifecycle and watchlist changes refresh at once; every call is logged
-- **Decision log**: filter by strategy, outcome, source, rule hit or request ID, and inspect the request (watchlist fields masked) and its trace
-- **Monitors**: five checks (feature PSI, score PSI, discrimination as the KS change against the reference period, approval rate shift and rule hit rate shift); the reference defaults to the model's training months; warning and alert thresholds; hourly, daily, weekly or manual schedules plus run now, with a run history
-- **Alert centre**: monitors raise alerts above their thresholds, one unresolved alert per monitor that later runs update (level, count); claim, resolve with a note, and alerts close themselves on recovery, with a full history; the sidebar shows the unresolved count
-- **Stability**: one model's monitors together: monthly score PSI, monthly AUC/KS, a model feature × month PSI heatmap and related alerts
-- **Chinese/English and light/dark** switching everywhere; every chart has a table view
-
-The demo data is a simulated retail credit application sample (12 months, about 24,000 applications, with channel and inquiry drift in the last three months), so every page has real analysis, an online admission strategy, 30 days of decisions and monitors that have already run on first start.
-
-### Stack
+```mermaid
+flowchart LR
+  user(["Analysts and admins"]) --> web["Web app<br/>Next.js 16 · React 19 · BoardUI"]
+  web -- "/api/* (same origin)" --> api["API<br/>FastAPI · Pydantic v2"]
+  systems(["Business systems"]) -- "POST /api/v1/decide/:code<br/>Bearer token" --> api
+  api --> engine["Analytics<br/>kivi · statsmodels · scikit-learn"]
+  api --> db[("PostgreSQL 18<br/>metadata · kivi_data samples")]
+  worker["Worker<br/>training · scoring · monitor schedules"] --> db
+  worker --> engine
+```
 
 | Layer | Technology |
 | --- | --- |
 | Backend | Python 3.11+ · FastAPI · Pydantic v2 · SQLAlchemy 2 · Alembic · psycopg 3 |
-| Analytics | kivi 0.4 (`bin_edges`, `cut`, `chimerge_edges`, `tree_edges`, `monotonic_edges`, `woe_table`, `psi_table`) · statsmodels (logistic regression, p-values, VIF) · scikit-learn (ROC) |
-| Database | PostgreSQL 18 |
-| Frontend | Next.js 16 · React 19 · Tailwind CSS v4 · React Aria · TanStack Query · Recharts · BoardUI |
+| Analytics | [kivi](https://github.com/gchensy/kivi) 0.4 (binning, WOE, IV, PSI) · statsmodels (logistic regression, p-values, VIF) · scikit-learn (ROC) |
+| Rules | A Pydantic rule language evaluated with vectorised pandas: one engine for backtests, the test console and live decisions |
+| Jobs | A PostgreSQL job queue (`FOR UPDATE SKIP LOCKED`) in the API process or `kivi-ui worker`, with monitor schedules |
+| Database | PostgreSQL 18; uploaded samples live as tables in the `kivi_data` schema |
+| Frontend | Next.js 16 · React 19 · Tailwind CSS v4 · React Aria · TanStack Query · Recharts · [BoardUI](https://github.com/BoardUI/boardui) |
 
-### Quick start
+## ⚙️ Configuration
 
-Requires Docker, [uv](https://docs.astral.sh/uv/), Node.js 20+ and pnpm.
-
-1. Start PostgreSQL (Docker, on `127.0.0.1:5433`):
-
-   ```bash
-   scripts/dev-db.sh start
-   ```
-
-2. Start the API (`http://127.0.0.1:8000`, docs at `/api/docs`):
-
-   ```bash
-   cd backend
-   cp .env.example .env
-   uv sync
-   uv run alembic upgrade head
-   uv run kivi-ui seed-demo
-   uv run uvicorn kivi_ui.main:app --reload
-   ```
-
-3. Start the web app (`http://localhost:3000`):
-
-   ```bash
-   cd web
-   pnpm install
-   pnpm dev
-   ```
-
-`seed-demo` creates the demo accounts `admin` (administrator), `analyst` (analyst) and a pending sign-up `newcomer`, for local demos only. Their password is `KIVI_DEMO_PASSWORD` in `backend/.env`; leave it empty and a random password is generated and printed once. The command refuses to run with `KIVI_ENV=production`. It also imports two demo datasets (the simulated retail credit sample and kivi's bank marketing sample), registers 12 indicators, trains the online application scorecard RETAIL_APP v1, and creates a phone blacklist and whitelist, the admission strategy RETAIL_APPLY (v1 online, v2 draft, both backtested), about 2,500 demo decisions, and five monitors (each run once, raising two alerts). Demo decisions move forward with the calendar, so the last 30 days always have data.
-
-Create a real administrator:
-
-```bash
-cd backend && uv run kivi-ui create-admin --username alice --email alice@example.com
-```
-
-### Configuration
-
-The API reads `KIVI_`-prefixed environment variables (see `backend/.env.example`):
+The API reads `KIVI_`-prefixed environment variables (see [`backend/.env.example`](backend/.env.example)):
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
@@ -215,45 +213,44 @@ The API reads `KIVI_`-prefixed environment variables (see `backend/.env.example`
 | `KIVI_COOKIE_SECURE` | Send the session cookie over HTTPS only; must be `true` in production | `false` |
 | `KIVI_SIGNUP_MODE` | `approval`, `open` or `closed` | `approval` |
 | `KIVI_SESSION_HOURS` | Session lifetime in hours | `8` |
-| `KIVI_REQUIRE_FOUR_EYES` | Authors and submitters can't approve their own model versions | `true` |
-| `KIVI_RUN_WORKER` | Run background jobs and monitor schedules inside the API process; with `false`, run `uv run kivi-ui worker` separately | `true` |
-| `KIVI_TIMEZONE` | Time zone (IANA name) of monitor schedules ("daily at 06:00") and of the overview's daily buckets | `America/Los_Angeles` |
+| `KIVI_REQUIRE_FOUR_EYES` | Authors and submitters can't approve their own versions | `true` |
+| `KIVI_RUN_WORKER` | Run jobs and monitor schedules inside the API process; with `false`, run `uv run kivi-ui worker` | `true` |
+| `KIVI_TIMEZONE` | Time zone (IANA name) of monitor schedules and the overview's daily buckets | `America/Los_Angeles` |
 | `KIVI_LIST_KEY` | HMAC key for watchlist digests; set it separately so watchlists survive a session key rotation | `KIVI_SECRET_KEY` |
+| `KIVI_DEMO_PASSWORD` | Password of the `seed-demo` accounts; empty means a random one, printed once | empty |
 
 The web app proxies `/api/*` to `KIVI_API_URL` (default `http://127.0.0.1:8000`), so the browser always talks to one origin.
 
-### Calling the decision API
+## 🗺️ Roadmap
 
-An administrator creates a token on the API tokens page (it is shown once). Business systems then call a strategy by its code:
+- ✅ **P1** Accounts with approval sign-up, two roles, audit log, bilingual light and dark UI
+- ✅ **P2** Dataset upload and profiling, IV screening, indicator catalogue, binning workbench and schemes, indicator stability
+- ✅ **P3** Scorecard wizard on a background job queue, version reports, review and deployment, batch scoring
+- ✅ **P4** Strategy rules, backtests and version comparison, watchlists, real-time decision API, decision log, API tokens
+- ✅ **P5** Monitors and schedules, alert centre, live overview and stability pages
 
-```bash
-curl -X POST http://localhost:3000/api/v1/decide/RETAIL_APPLY \
-  -H "Authorization: Bearer kv_…" \
-  -H "Content-Type: application/json" \
-  -d '{"request_id": "APP-0001", "data": {"phone": "13800001234", "age": 35, "inquiries_6m": 2, "overdue_24m": 0, "channel": "app"}}'
-```
+The full design, in Chinese, is in [docs/design.md](docs/design.md). Ideas and issues are welcome.
 
-The response holds the decision (`pass`, `review` or `reject`), the reason code, the rules hit, model scores and default probabilities, missing fields and latency. Repeating a `request_id` returns the first answer (`replayed: true`).
-
-### Tests
+## 🤝 Contributing
 
 ```bash
-cd backend && uv run pytest        # uses a separate kivi_test database
-cd web && pnpm typecheck && pnpm build
+scripts/dev-db.sh start                     # PostgreSQL, with a kivi_test database for the tests
+cd backend
+uv run pytest                               # API, rules, monitoring and analytics tests
+uv run ruff check kivi_ui tests && uv run ruff format --check kivi_ui tests
+uv run alembic check                        # models and migrations agree
+cd ../web
+pnpm typecheck && pnpm build
 ```
 
-### Roadmap
+CI runs the same checks on every pull request.
 
-| Phase | Scope | Status |
-| --- | --- | --- |
-| P1 | Accounts, roles, audit, risk visualisation | ✅ |
-| P2 | Dataset upload and profiling, screening, indicator catalogue, binning workbench and schemes, indicator stability | ✅ |
-| P3 | Scorecard wizard, model versions, review and deployment, batch scoring, background job queue | ✅ |
-| P4 | Strategy rules, backtesting and version comparison, watchlists, real-time decision API, decision log, API tokens | ✅ |
-| P5 | Monitors and schedules, alert centre, live data on the overview and stability pages | ✅ |
+## 📄 License
 
-See [docs/design.md](docs/design.md) for the full design (in Chinese).
+[MIT](LICENSE). BoardUI components are MIT licensed and kivi is MIT licensed; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-### License
+<div align="center">
 
-MIT. BoardUI components are MIT licensed; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+<sub>If kivi-ui helps your risk team, a ⭐ helps others find it.</sub>
+
+</div>

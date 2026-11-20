@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 972 330" width="972" height="330" role="img" aria-label="kivi-ui platform: data, indicators, models, strategies and decisions, monitoring; drift found by monitoring feeds the next model and strategy version">
+  <style>
+    .card { fill: #f6f8ff; stroke: #d6def5; }
+    .title { fill: #0f172a; font: 600 15px system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    .desc { fill: #475569; font: 400 11.5px system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    .chip { fill: #e7eefe; }
+    .code { fill: #1d4ed8; font: 500 10.5px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .badge { fill: #2b7fff; }
+    .num { fill: #fff; font: 700 12px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+    .ink { fill: #2b7fff; }
+    .ink2 { fill: #0d9488; }
+    .soft { fill: #c7d7fe; }
+    .grid { stroke: #cbd5e1; stroke-width: 1; }
+    .line { stroke: #2b7fff; stroke-width: 2; fill: none; stroke-linecap: round; }
+    .diag { stroke: #94a3b8; stroke-width: 1; stroke-dasharray: 3 3; }
+    .warn { stroke: #d97706; stroke-width: 1.4; stroke-dasharray: 4 3; }
+    .pass { fill: #16a34a; }
+    .review { fill: #f59e0b; }
+    .reject { fill: #dc2626; }
+    .alert { fill: #dc2626; }
+    .arrow { stroke: #94a3b8; stroke-width: 2; fill: none; }
+    .head { fill: #94a3b8; }
+    .loop { stroke: #7c3aed; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; }
+    .loophead { fill: #7c3aed; }
+    .looplabel { fill: #6d28d9; font: 500 11.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, "PingFang SC", sans-serif; }
+    @media (prefers-color-scheme: dark) {
+      .card { fill: #141a26; stroke: #283350; }
+      .title { fill: #e5e7eb; }
+      .desc { fill: #94a3b8; }
+      .chip { fill: #1c2742; }
+      .code { fill: #9db8ff; }
+      .badge { fill: #6c9dff; }
+      .num { fill: #0b1020; }
+      .ink { fill: #6c9dff; }
+      .ink2 { fill: #2dd4bf; }
+      .soft { fill: #2a3a63; }
+      .grid { stroke: #334155; }
+      .line { stroke: #6c9dff; }
+      .diag { stroke: #475569; }
+      .warn { stroke: #fbbf24; }
+      .pass { fill: #22c55e; }
+      .review { fill: #fbbf24; }
+      .reject { fill: #f87171; }
+      .alert { fill: #f87171; }
+      .arrow { stroke: #64748b; }
+      .head { fill: #64748b; }
+      .loop { stroke: #a78bfa; }
+      .loophead { fill: #a78bfa; }
+      .looplabel { fill: #c4b5fd; }
+    }
+  </style>
+
+  <!-- 1. Data -->
+  <g transform="translate(10 16)">
+    <rect class="card" width="168" height="236" rx="14"/>
+    <circle class="badge" cx="26" cy="28" r="12"/>
+    <text class="num" x="26" y="32" text-anchor="middle">1</text>
+    <text class="title" x="46" y="33">Data</text>
+    <rect class="chip" x="14" y="50" width="140" height="22" rx="6"/>
+    <text class="code" x="22" y="65">CSV · UTF-8 / GBK</text>
+    <g transform="translate(22 88)">
+      <rect class="soft" width="124" height="14" rx="3"/>
+      <rect class="chip" y="18" width="124" height="12" rx="3"/>
+      <rect class="chip" y="34" width="124" height="12" rx="3"/>
+      <rect class="chip" y="50" width="124" height="12" rx="3"/>
+      <rect class="ink" x="96" y="20" width="22" height="8" rx="2"/>
+      <rect class="ink" x="96" y="36" width="14" height="8" rx="2"/>
+      <rect class="ink" x="96" y="52" width="30" height="8" rx="2" opacity="0.6"/>
+    </g>
+    <text class="desc" x="14" y="182">Upload samples, detect</text>
+    <text class="desc" x="14" y="198">target and date columns,</text>
+    <text class="desc" x="14" y="214">profile and quick IV.</text>
+  </g>
+
+  <!-- arrow -->
+  <path class="arrow" d="M182 134 H 196"/>
+  <path class="head" d="M196 128 L 204 134 L 196 140 Z"/>
+
+  <!-- 2. Indicators -->
+  <g transform="translate(206 16)">
+    <rect class="card" width="168" height="236" rx="14"/>
+    <circle class="badge" cx="26" cy="28" r="12"/>
+    <text class="num" x="26" y="32" text-anchor="middle">2</text>
+    <text class="title" x="46" y="33">Indicators</text>
+    <rect class="chip" x="14" y="50" width="140" height="22" rx="6"/>
+    <text class="code" x="22" y="65">WOE · IV · PSI</text>
+    <g transform="translate(22 88)">
+      <line class="grid" x1="0" y1="64" x2="124" y2="64"/>
+      <rect class="ink" x="4" y="44" width="18" height="20" rx="2"/>
+      <rect class="ink" x="28" y="34" width="18" height="30" rx="2"/>
+      <rect class="ink" x="52" y="22" width="18" height="42" rx="2"/>
+      <rect class="ink" x="76" y="12" width="18" height="52" rx="2"/>
+      <rect class="ink2" x="100" y="4" width="18" height="60" rx="2"/>
+    </g>
+    <text class="desc" x="14" y="182">Seven binning methods,</text>
+    <text class="desc" x="14" y="198">special values, saved</text>
+    <text class="desc" x="14" y="214">schemes, monthly PSI.</text>
+  </g>
+
+  <path class="arrow" d="M378 134 H 392"/>
+  <path class="head" d="M392 128 L 400 134 L 392 140 Z"/>
+
+  <!-- 3. Models -->
+  <g transform="translate(402 16)">
+    <rect class="card" width="168" height="236" rx="14"/>
+    <circle class="badge" cx="26" cy="28" r="12"/>
+    <text class="num" x="26" y="32" text-anchor="middle">3</text>
+    <text class="title" x="46" y="33">Scorecards</text>
+    <rect class="chip" x="14" y="50" width="140" height="22" rx="6"/>
+    <text class="code" x="22" y="65">AUC 0.731 · KS 0.365</text>
+    <g transform="translate(34 84)">
+      <line class="grid" x1="0" y1="70" x2="100" y2="70"/>
+      <line class="grid" x1="0" y1="0" x2="0" y2="70"/>
+      <line class="diag" x1="0" y1="70" x2="100" y2="0"/>
+      <path class="line" d="M0 70 C 8 30, 30 12, 100 0"/>
+    </g>
+    <text class="desc" x="14" y="182">IV → VIF → sign → p-value</text>
+    <text class="desc" x="14" y="198">selection, PDO points,</text>
+    <text class="desc" x="14" y="214">four-eyes review.</text>
+  </g>
+
+  <path class="arrow" d="M574 134 H 588"/>
+  <path class="head" d="M588 128 L 596 134 L 588 140 Z"/>
+
+  <!-- 4. Strategies & decisions -->
+  <g transform="translate(598 16)">
+    <rect class="card" width="168" height="236" rx="14"/>
+    <circle class="badge" cx="26" cy="28" r="12"/>
+    <text class="num" x="26" y="32" text-anchor="middle">4</text>
+    <text class="title" x="46" y="33">Decisions</text>
+    <rect class="chip" x="14" y="50" width="140" height="22" rx="6"/>
+    <text class="code" x="22" y="65">POST /decide/{code}</text>
+    <g transform="translate(22 92)">
+      <rect class="pass" width="76" height="16" rx="3"/>
+      <rect class="review" x="78" width="22" height="16" rx="3"/>
+      <rect class="reject" x="102" width="22" height="16" rx="3"/>
+      <rect class="pass" y="26" width="72" height="16" rx="3" opacity="0.75"/>
+      <rect class="review" x="74" y="26" width="20" height="16" rx="3" opacity="0.75"/>
+      <rect class="reject" x="96" y="26" width="28" height="16" rx="3" opacity="0.75"/>
+    </g>
+    <text class="desc" x="14" y="182">Rules, watchlists and</text>
+    <text class="desc" x="14" y="198">model scores; backtest,</text>
+    <text class="desc" x="14" y="214">swap matrix, live API.</text>
+  </g>
+
+  <path class="arrow" d="M770 134 H 784"/>
+  <path class="head" d="M784 128 L 792 134 L 784 140 Z"/>
+
+  <!-- 5. Monitoring -->
+  <g transform="translate(794 16)">
+    <rect class="card" width="168" height="236" rx="14"/>
+    <circle class="badge" cx="26" cy="28" r="12"/>
+    <text class="num" x="26" y="32" text-anchor="middle">5</text>
+    <text class="title" x="46" y="33">Monitors</text>
+    <rect class="chip" x="14" y="50" width="140" height="22" rx="6"/>
+    <text class="code" x="22" y="65">PSI · KS · shifts</text>
+    <g transform="translate(34 84)">
+      <line class="grid" x1="0" y1="70" x2="100" y2="70"/>
+      <line class="warn" x1="0" y1="34" x2="100" y2="34"/>
+      <rect class="ink" x="4" y="62" width="12" height="8" rx="2"/>
+      <rect class="ink" x="20" y="60" width="12" height="10" rx="2"/>
+      <rect class="ink" x="36" y="63" width="12" height="7" rx="2"/>
+      <rect class="ink" x="52" y="58" width="12" height="12" rx="2"/>
+      <rect class="review" x="68" y="38" width="12" height="32" rx="2"/>
+      <rect class="alert" x="84" y="14" width="12" height="56" rx="2"/>
+    </g>
+    <text class="desc" x="14" y="182">Scheduled checks,</text>
+    <text class="desc" x="14" y="198">alerts to claim and</text>
+    <text class="desc" x="14" y="214">resolve, live overview.</text>
+  </g>
+
+  <!-- feedback loop -->
+  <path class="loop" d="M878 256 V 292 Q 878 304 866 304 H 302 Q 290 304 290 292 V 262"/>
+  <path class="loophead" d="M284 266 L 290 256 L 296 266 Z"/>
+  <text class="looplabel" x="584" y="322" text-anchor="middle">drift and alerts feed the next indicator scheme, model version and strategy version</text>
+</svg>

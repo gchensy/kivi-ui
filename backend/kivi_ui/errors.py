@@ -31,10 +31,12 @@ def install_error_handlers(app: FastAPI) -> None:
 
     from .analytics.binning import BinningError
     from .data.store import DataError
+    from .rules.engine import RuleError
 
     @app.exception_handler(DataError)
     @app.exception_handler(BinningError)
-    async def _data_error(_: Request, exc: DataError | BinningError) -> JSONResponse:
+    @app.exception_handler(RuleError)
+    async def _data_error(_: Request, exc: DataError | BinningError | RuleError) -> JSONResponse:
         return JSONResponse(jsonable_encoder(_body(exc.code, str(exc), exc.detail or None)), status_code=400)
 
     @app.exception_handler(RequestValidationError)

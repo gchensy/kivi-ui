@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     max_failed_logins: int = Field(5, ge=1)
     lockout_minutes: int = Field(15, ge=1)
 
+    # HMAC key for watchlist values; defaults to the secret key. Changing it makes stored lists unmatchable.
+    list_key: str | None = None
+
     # Run the background job worker inside the API process (training, batch scoring).
     run_worker: bool = True
 

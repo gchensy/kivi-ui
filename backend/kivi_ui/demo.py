@@ -161,3 +161,339 @@ def seed_model(db: Session, admin: User | None, analyst: User | None) -> list[st
     version.status, version.online_at = "online", now
     db.commit()
     return [f"model {MODEL_CODE} v1 online (OOT AUC {version.auc_oot})"]
+
+
+# ---- P4: watchlists, the admission strategy and its decision history ------------------------
+
+STRATEGY_CODE = "RETAIL_APPLY"
+BLACKLIST, WHITELIST = "BL_PHONE", "WL_PHONE"
+
+
+def _cond(field: str, op: str, value=None) -> dict:
+    return {"field": field, "op": op, "value": value}
+
+
+def _rule(code, name, name_en, decision, items, mode="all", terminal=False, reason=""):
+    return {
+        "code": code,
+        "name": name,
+        "name_en": name_en,
+        "decision": decision,
+        "terminal": terminal,
+        "enabled": True,
+        "reason": reason or code,
+        "when": {"mode": mode, "items": items},
+    }
+
+
+def admission_rules(cutoff: int = 520, extra: bool = False) -> dict:
+    score = f"model:{MODEL_CODE}.score"
+    rules = [
+        _rule(
+            "W01",
+            "VIP 白名单直通",
+            "VIP whitelist pass",
+            "pass",
+            [_cond("phone", "in_list", WHITELIST)],
+            terminal=True,
+            reason="WHITELIST",
+        ),
+        _rule(
+            "R01",
+            "电话命中黑名单",
+            "Phone on blacklist",
+            "reject",
+            [_cond("phone", "in_list", BLACKLIST)],
+            reason="BLACKLIST",
+        ),
+        _rule(
+            "R02",
+            "年龄不在 20–60 岁",
+            "Age outside 20–60",
+            "reject",
+            [_cond("age", "lt", 20), _cond("age", "gt", 60)],
+            mode="any",
+            reason="AGE",
+        ),
+        _rule(
+            "R03",
+            "近24月逾期 ≥ 3 次",
+            "3+ delinquencies (24m)",
+            "reject",
+            [_cond("overdue_24m", "ge", 3)],
+            reason="DELINQUENCY",
+        ),
+        _rule(
+            "R04",
+            "近6月查询 ≥ 9 次",
+            "9+ inquiries (6m)",
+            "reject",
+            [_cond("inquiries_6m", "ge", 9)],
+            reason="INQUIRIES",
+        ),
+        _rule(
+            "R05",
+            f"评分 < {cutoff}",
+            f"Score below {cutoff}",
+            "reject",
+            [_cond(score, "lt", cutoff)],
+            reason="LOW_SCORE",
+        ),
+        _rule(
+            "R06",
+            f"评分 {cutoff}–560 人工审核",
+            f"Score {cutoff}–560 to review",
+            "review",
+            [_cond(score, "ge", cutoff), _cond(score, "lt", 560)],
+            reason="GREY_SCORE",
+        ),
+        _rule(
+            "R07",
+            "合作渠道且评分 < 590",
+            "Partner channel, score < 590",
+            "review",
+            [_cond("channel", "eq", "partner"), _cond(score, "lt", 590)],
+            reason="PARTNER",
+        ),
+    ]
+    if extra:
+        rules.append(
+            _rule(
+                "R08",
+                "负债收入比 > 0.85 人工审核",
+                "Debt-to-income > 0.85 to review",
+                "review",
+                [_cond("debt_ratio", "gt", 0.85)],
+                reason="DTI",
+            )
+        )
+    return {"default_decision": "pass", "rules": rules}
+
+
+def seed_strategy(db: Session, admin: User | None, analyst: User | None) -> list[str]:
+    """Watchlists from the retail sample, RETAIL_APPLY v1 online and v2 in draft, 30 days of decisions."""
+    import numpy as np
+    import pandas as pd
+
+    from .models import DecisionLog, RiskList, Strategy, StrategyReview, StrategyVersion
+    from .routes.lists import add_items  # noqa: F401  (same hashing as the API)
+    from .rules import runtime
+    from .rules.dsl import Definition
+    from .rules.engine import evaluate, mask_text, normalise_value, summarise, swap
+
+    if db.scalar(select(Strategy.id).where(Strategy.code == STRATEGY_CODE)):
+        return []
+    retail = db.scalar(select(Dataset).where(Dataset.name == RETAIL))
+    if retail is None or "phone" not in {c.column_name for c in retail.columns}:
+        return []
+    from .data import store
+
+    frame = store.read_columns(db, retail, [c.column_name for c in retail.columns])
+    rng = np.random.default_rng(11)
+    bad = frame[frame.target == 1]
+    good = frame[frame.target == 0]
+    black = list(bad.phone.sample(80, random_state=1)) + list(good.phone.sample(10, random_state=2))
+    white = list(good.sort_values("credit_utilization").phone.head(25))
+    digest = runtime.hasher()
+    created = []
+    owner = admin.id if admin else None
+    for code, name, name_en, kind, values, reason in (
+        (BLACKLIST, "电话黑名单", "Phone blacklist", "black", black, "历史欺诈或恶意逾期"),
+        (WHITELIST, "VIP 客户白名单", "VIP whitelist", "white", white, "存量优质客户"),
+    ):
+        lst = RiskList(
+            code=code,
+            name=name,
+            name_en=name_en,
+            kind=kind,
+            dimension="phone",
+            owner_id=owner,
+            description=f"演示名单，来自零售样本。 Demo list drawn from the retail sample ({len(values)}).",
+        )
+        db.add(lst)
+        db.flush()
+        from .models import RiskListItem
+
+        for value in values:
+            text = normalise_value(value)
+            db.add(
+                RiskListItem(
+                    list_id=lst.id,
+                    value_hash=digest(text),
+                    value_masked=mask_text(text),
+                    reason=reason,
+                    created_by=owner,
+                )
+            )
+        created.append(f"watchlist {code} ({len(values)})")
+    db.flush()
+
+    author = analyst or admin
+    strategy = Strategy(
+        code=STRATEGY_CODE,
+        name="零售信贷申请准入策略",
+        name_en="Retail admission strategy",
+        scene="admission",
+        owner_id=author.id if author else None,
+        description="名单 + 硬规则 + 评分卡分数段的准入策略，引用在线模型 RETAIL_APP。",
+    )
+    db.add(strategy)
+    db.flush()
+    v1 = StrategyVersion(
+        strategy_id=strategy.id,
+        version=1,
+        definition=admission_rules(),
+        created_by=author.id if author else None,
+        notes="首版准入策略。",
+    )
+    v2 = StrategyVersion(
+        strategy_id=strategy.id,
+        version=2,
+        definition=admission_rules(530, extra=True),
+        created_by=author.id if author else None,
+        notes="候选版本：拒绝线提高到 530，负债收入比过高转人工审核。",
+    )
+    db.add_all([v1, v2])
+    db.flush()
+    now = pd.Timestamp.now(tz="UTC")
+    for action, actor, comment in (
+        ("submit", author, "提交审批。"),
+        ("approve", admin, "回测通过率与坏账率符合预期。"),
+        ("online", admin, ""),
+    ):
+        db.add(
+            StrategyReview(
+                version_id=v1.id, action=action, actor_id=actor.id if actor else None, comment=comment
+            )
+        )
+    v1.submitted_by, v1.submitted_at = (author.id if author else None), now
+    v1.approved_by, v1.approved_at = (admin.id if admin else None), now
+    v1.status, v1.online_at = "online", now
+
+    # Backtests on the retail sample, v2 compared with v1.
+    frame_y = store.labels(retail, frame)
+    months = pd.to_datetime(frame.applied_on).dt.to_period("M").astype("string")
+    d1, d2 = Definition.model_validate(v1.definition), Definition.model_validate(v2.definition)
+    r1 = evaluate(d1, frame, runtime.context_for(db, d1))
+    r2 = evaluate(d2, frame, runtime.context_for(db, d2))
+    ran = now.isoformat(timespec="seconds")
+    ref = {"id": str(retail.id), "name": retail.name}
+    v1.backtest = {"dataset": ref, "summary": summarise(d1, r1, frame_y, months), "ran_at": ran}
+    v2.backtest = {
+        "dataset": ref,
+        "summary": summarise(d2, r2, frame_y, months),
+        "ran_at": ran,
+        "compare": {
+            "version_id": str(v1.id),
+            "version": 1,
+            "summary": v1.backtest["summary"],
+            "swap": swap(r1.decision, r2.decision, frame_y.astype(int)),
+        },
+    }
+    created.append(f"strategy {STRATEGY_CODE} v1 online, v2 draft")
+
+    # Decisions for the last 30 days of applications, as if they came through the API.
+    recent = frame.applied_on >= (frame.applied_on.max() - pd.Timedelta(days=29))
+    rules = {r.code: r for r in d1.rules}
+    logs = []
+    for idx in frame.index[recent]:
+        row = frame.loc[idx]
+        hit = [c for c in r1.hits.columns if bool(r1.hits.at[idx, c])]
+        deciding = r1.deciding_rule.at[idx]
+        at = pd.Timestamp(row.applied_on).tz_localize("Asia/Shanghai") + pd.Timedelta(
+            hours=int(rng.integers(8, 22)), minutes=int(rng.integers(0, 60))
+        )
+        logs.append(
+            DecisionLog(
+                request_id=f"demo-{row.application_id}",
+                strategy_id=strategy.id,
+                version_id=v1.id,
+                strategy_code=STRATEGY_CODE,
+                version=1,
+                decision=r1.decision.at[idx],
+                reason=(rules[deciding].reason or deciding) if deciding else "",
+                hit_rules=hit,
+                scores={
+                    MODEL_CODE: {
+                        "score": int(r1.outputs.at[idx, f"model:{MODEL_CODE}.score"]),
+                        "probability": round(float(r1.outputs.at[idx, f"model:{MODEL_CODE}.prob"]), 6),
+                    }
+                },
+                trace=[
+                    {
+                        "code": r.code,
+                        "name": r.name,
+                        "name_en": r.name_en,
+                        "decision": r.decision,
+                        "terminal": r.terminal,
+                        "hit": r.code in hit,
+                        "when": None,
+                    }
+                    for r in d1.rules
+                ],
+                input={
+                    k: (
+                        mask_text(str(row[k]))
+                        if k == "phone"
+                        else (
+                            None
+                            if pd.isna(row[k])
+                            else (row[k].item() if hasattr(row[k], "item") else str(row[k]))
+                        )
+                    )
+                    for k in (
+                        "phone",
+                        "age",
+                        "monthly_income",
+                        "debt_ratio",
+                        "credit_utilization",
+                        "inquiries_6m",
+                        "overdue_24m",
+                        "employment_years",
+                        "loan_amount",
+                        "loan_term",
+                        "housing",
+                        "education",
+                        "channel",
+                    )
+                },
+                latency_ms=round(float(rng.gamma(4, 1.6)), 2),
+                source="demo",
+                created_at=at.to_pydatetime(),
+            )
+        )
+    db.add_all(logs)
+    created.append(f"{len(logs)} demo decisions")
+    db.commit()
+    runtime.invalidate()
+    return created
+
+
+def refresh(db: Session) -> None:
+    """Remove demo datasets, indicators, model, strategy, lists and decisions so they can be re-seeded."""
+    from .data import store
+    from .db import get_engine
+    from .models import DecisionLog, RiskList, RiskModel, Strategy
+
+    db.execute(DecisionLog.__table__.delete().where(DecisionLog.strategy_code == STRATEGY_CODE))
+    for cls, code in ((Strategy, STRATEGY_CODE), (RiskModel, MODEL_CODE)):
+        obj = db.scalar(select(cls).where(cls.code == code))
+        if obj is not None:
+            db.delete(obj)
+    for code in (BLACKLIST, WHITELIST):
+        obj = db.scalar(select(RiskList).where(RiskList.code == code))
+        if obj is not None:
+            db.delete(obj)
+    demo = list(db.scalars(select(Dataset).where(Dataset.source == "demo")).unique())
+    for indicator in db.scalars(
+        select(Indicator).where(Indicator.dataset_id.in_([d.id for d in demo]))
+    ).unique():
+        indicator.default_scheme_id = None
+        db.flush()
+        db.delete(indicator)
+    tables = [d.table_name for d in demo]
+    for dataset in demo:
+        db.delete(dataset)
+    db.commit()
+    for table in tables:
+        store.drop_table(get_engine(), table)

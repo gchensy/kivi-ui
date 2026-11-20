@@ -15,12 +15,14 @@ from kivi_ui.data.store import SCHEMA as DATA_SCHEMA  # noqa: E402
 from kivi_ui.db import Base, get_engine, get_sessionmaker  # noqa: E402
 from kivi_ui.main import create_app  # noqa: E402
 from kivi_ui.models import Role, User, UserStatus  # noqa: E402
+from kivi_ui.rules import runtime  # noqa: E402
 from kivi_ui.security import hash_password  # noqa: E402
 
 PASSWORD = "Passw0rd-test"
 # CASCADE also covers the indicators <-> binning_schemes foreign key cycle.
 TABLES = (
-    "model_reviews, model_versions, risk_models, jobs, binning_schemes, indicators, dataset_columns,"
+    "decision_logs, api_tokens, risk_list_items, risk_lists, strategy_reviews, strategy_versions, strategies,"
+    " model_reviews, model_versions, risk_models, jobs, binning_schemes, indicators, dataset_columns,"
     " datasets, audit_logs, analytics_snapshots, users"
 )
 
@@ -51,6 +53,7 @@ def clean(schema):
         connection.execute(text(f"TRUNCATE {TABLES} CASCADE"))
         reset_data_schema(connection)
     get_settings.cache_clear()
+    runtime.invalidate()  # the decision API caches online strategies for 30 seconds
 
 
 @pytest.fixture

@@ -6,6 +6,7 @@ metrics use scikit-learn. The result is a JSON-ready dictionary that the web
 client renders; every label is either a code or carries both languages.
 """
 
+import warnings
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -112,7 +113,9 @@ def _bin_rows(feature: Feature, edges: np.ndarray | None, table: pd.DataFrame) -
 
 
 def _fit_feature(feature: Feature, values: pd.Series, target: pd.Series):
-    edges = bin_edges(values, feature.bins) if feature.kind == "numeric" else None
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)  # tied quantiles merge bins, as intended here
+        edges = bin_edges(values, feature.bins) if feature.kind == "numeric" else None
     encoder = Encoder(feature, edges, pd.Series(dtype=float))
     table = woe_table(encoder.groups(values), target)
     if edges is not None:

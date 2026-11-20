@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from . import __version__
 from .config import get_settings
 from .errors import install_error_handlers
-from .routes import analytics, audit_logs, auth, users
+from .routes import analytics, audit_logs, auth, datasets, indicators, users
 
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -38,7 +38,7 @@ def create_app() -> FastAPI:
         return await call_next(request)
 
     api = APIRouter(prefix="/api/v1")
-    for module in (auth, users, audit_logs, analytics):
+    for module in (auth, users, audit_logs, analytics, datasets, indicators):
         api.include_router(module.router)
 
     @api.get("/health", tags=["meta"])

@@ -213,7 +213,8 @@ export function Sidebar({
         className,
       )}
     >
-      <div className="-m-2 flex min-h-0 w-[calc(100%+16px)] flex-col gap-4 overflow-y-auto p-2 [scrollbar-width:none]">
+      {/* The nav scrolls on short windows; it ends at the controls below and fades out instead of being cut mid-line. */}
+      <div className="-mx-2 -mt-2 flex min-h-0 w-[calc(100%+16px)] flex-col gap-4 overflow-y-auto px-2 pt-2 pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-28px),transparent)] [scrollbar-width:none]">
         <div className={cx("flex items-center", collapsed ? "flex-col-reverse gap-3" : "justify-between gap-2")}>
           <Link href="/" className="flex min-w-0 items-center gap-2.5 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
             <KiviMark className={collapsed ? "size-9" : undefined} />

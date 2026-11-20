@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      # Same setup as docker-compose.yml: the "kivi" database is created by the
+      # image, "kivi_test" by scripts/init-db.sql below.
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: kivi
+          POSTGRES_PASSWORD: kivi
+          POSTGRES_DB: kivi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kivi -d kivi"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      # setup-uv no longer publishes moving major tags, so pin the release.
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          working-directory: backend
+
+      - name: Create test database
+        env:
+          PGPASSWORD: kivi
+        run: psql -h localhost -U kivi -d kivi -v ON_ERROR_STOP=1 -f ../scripts/init-db.sql
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check kivi_ui tests
+
+      - name: Check formatting
+        run: uv run ruff format --check kivi_ui tests
+
+      - name: Apply migrations
+        env:
+          KIVI_DATABASE_URL: postgresql+psycopg://kivi:kivi@localhost:5432/kivi
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+
+      - name: Test
+        env:
+          KIVI_DATABASE_URL: postgresql+psycopg://kivi:kivi@localhost:5432/kivi_test
+        run: uv run pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build

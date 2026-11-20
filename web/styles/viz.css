@@ -3,7 +3,8 @@
  *
  * Validated with the dataviz palette validator against BoardUI's chart-card
  * surface (background-secondary: #f7f7f7 light, #171717 dark):
- *   categorical  blue / orange: adjacent CVD ΔE ≥ 24, normal ΔE ≥ 31 (both modes)
+ *   categorical  blue / orange: adjacent CVD ΔE ≥ 24, normal ΔE ≥ 31 (both modes);
+ *                + aqua (slot 3) for a third split: all pairs CVD ΔE ≥ 9.2, normal ≥ 20.9
  *   light orange is 2.99:1 on the surface, so every chart also has a table view
  *   status       good / warning / serious / critical, always with icon + label
  *   sequential   one blue hue, light→dark (dark mode starts at step 600)
@@ -14,6 +15,7 @@
 :root {
   --viz-1: #2a78d6;
   --viz-2: #eb6834;
+  --viz-3: #1baf7a;
   --viz-neutral: #b9b8b2;
   --viz-grid: #e4e4e1;
   --viz-axis: #c9c8c1;
@@ -42,6 +44,7 @@
 .dark {
   --viz-1: #3987e5;
   --viz-2: #d95926;
+  --viz-3: #199e70;
   --viz-neutral: #5d5c57;
   --viz-grid: #2a2a29;
   --viz-axis: #3a3a37;

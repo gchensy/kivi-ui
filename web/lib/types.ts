@@ -252,7 +252,7 @@ export interface Dataset {
   id: string;
   name: string;
   description: string;
-  source: "upload" | "demo";
+  source: "upload" | "demo" | "score";
   file_name: string | null;
   row_count: number;
   column_count: number;
@@ -381,4 +381,134 @@ export interface Stability {
   reference: [string, string];
   months: { month: string; rows: number; psi: number | null; bad_rate: number | null; in_reference: boolean; shares: Record<string, number> }[];
   bins: { code: string; kind: RuleBin["kind"]; lower?: number | null; upper?: number | null; value?: number | string }[];
+}
+
+// ---- P3: models ------------------------------------------------------------------------------
+
+export type Scene = "application" | "behavior" | "collection" | "fraud" | "other";
+export type VersionStatus = "training" | "failed" | "draft" | "in_review" | "approved" | "online" | "retired";
+export type Split = "train" | "test" | "oot";
+
+export interface Job {
+  id: string;
+  kind: string;
+  status: "queued" | "running" | "done" | "failed";
+  progress: number;
+  error: string | null;
+  result: Record<string, unknown>;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface VersionSummary {
+  id: string;
+  model_id: string;
+  version: number;
+  status: VersionStatus;
+  dataset: { id: string; name: string; target_column: string | null; date_column: string | null; row_count: number } | null;
+  feature_count: number;
+  auc_train: number | null;
+  auc_test: number | null;
+  auc_oot: number | null;
+  ks_train: number | null;
+  ks_test: number | null;
+  ks_oot: number | null;
+  error: string | null;
+  job_id: string | null;
+  author: Person | null;
+  created_at: string;
+  submitted_at: string | null;
+  approved_at: string | null;
+  online_at: string | null;
+  retired_at: string | null;
+}
+
+export interface TrainConfig {
+  oot_months: number;
+  test_ratio: number;
+  seed: number;
+  iv_min: number;
+  vif_max: number;
+  p_max: number;
+  require_positive: boolean;
+  max_features: number;
+  base_score: number;
+  base_odds: number;
+  pdo: number;
+}
+
+export interface ModelFeature {
+  indicator_id: string;
+  code: string;
+  name: string;
+  name_en: string | null;
+  column: string;
+  kind: "numeric" | "category";
+  unit: Unit;
+  coefficient: number;
+  std_err: number;
+  p_value: number;
+  vif: number;
+  iv: number;
+  trend: Trend;
+  psi: Partial<Record<Split, number>>;
+  spec: BinSpec;
+  bins: (RuleBin & { points: number })[];
+}
+
+export interface SplitEvaluation {
+  rows: number;
+  bad: number;
+  bad_rate: number;
+  period?: [string, string] | null;
+  roc?: Roc;
+  bands: Band[];
+  psi?: number;
+}
+
+export interface TrainResult {
+  features: ModelFeature[];
+  intercept: number;
+  scale: { base_score: number; base_odds: number; pdo: number; factor: number; offset: number };
+  evaluation: Partial<Record<Split, SplitEvaluation>>;
+  focus: Split;
+  gains: Gain[];
+  score_stats: { min: number; max: number; mean: number };
+  band_cuts: number[];
+  selection: {
+    candidates: { code: string; name?: string; name_en?: string | null; iv: number | null; selected: boolean; reason: string | null; value?: number | null }[];
+    steps: { rule: "iv" | "max_features" | "vif" | "sign" | "pvalue"; feature: string; value: number | null }[];
+  };
+  fit: { pseudo_r2: number; log_likelihood: number; aic: number; rows: number };
+  notes: string[];
+}
+
+export interface VersionDetail extends VersionSummary {
+  model: { id: string; code: string; name: string; name_en: string | null; scene: Scene };
+  config: { indicator_ids: string[]; train: TrainConfig };
+  result: TrainResult | Record<string, never>;
+  notes: string;
+  submitter: Person | null;
+  approver: Person | null;
+  reviews: { action: string; actor: Person | null; comment: string; created_at: string }[];
+}
+
+export interface RiskModel {
+  id: string;
+  code: string;
+  name: string;
+  name_en: string | null;
+  scene: Scene;
+  description: string;
+  owner: Person | null;
+  created_at: string;
+  updated_at: string;
+  version_count: number;
+  online: VersionSummary | null;
+  latest: VersionSummary | null;
+}
+
+export interface ModelDetail extends RiskModel {
+  versions: VersionSummary[];
 }

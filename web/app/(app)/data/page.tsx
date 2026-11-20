@@ -120,6 +120,7 @@ function DatasetCard({ dataset }: { dataset: Dataset }) {
           <div className="flex items-center gap-2">
             <h2 className="truncate text-headline-medium text-text-primary">{dataset.name}</h2>
             {dataset.source === "demo" && <Chip variant="subtle" color="purple">{t("data.demo")}</Chip>}
+            {dataset.source === "score" && <Chip variant="subtle" color="orange">{t("data.scoreSource")}</Chip>}
           </div>
           <p className="line-clamp-2 text-body-2-regular text-text-secondary">{dataset.description || dataset.file_name || "—"}</p>
         </div>

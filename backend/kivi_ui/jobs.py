@@ -3,10 +3,12 @@
 Jobs are rows in ``jobs``. A worker claims the oldest queued row with
 ``FOR UPDATE SKIP LOCKED``, so several workers (threads or processes) never
 take the same job. Handlers are registered by kind and receive a fresh session.
+Ticks are periodic callbacks (monitor schedules) that the worker runs between jobs.
 """
 
 import logging
 import threading
+import time
 import traceback
 import uuid
 from collections.abc import Callable
@@ -97,6 +99,21 @@ def run_pending(limit: int = 100) -> int:
 
 
 FAILURE_HOOKS: dict[str, Callable[[Session, Job], None]] = {}
+TICKS: list[Callable[[], object]] = []
+
+
+def tick(fn: Callable[[], object]) -> Callable[[], object]:
+    """Register a callback the worker runs about every ``Worker.tick_seconds``."""
+    TICKS.append(fn)
+    return fn
+
+
+def run_ticks() -> None:
+    for fn in TICKS:
+        try:
+            fn()
+        except Exception:  # noqa: BLE001 - one failing tick must not stop the others
+            log.exception("tick %s failed", getattr(fn, "__name__", fn))
 
 
 def on_failure(kind: str):
@@ -123,15 +140,20 @@ def requeue_stale(minutes: int = 30) -> None:
 class Worker(threading.Thread):
     """Polls the queue until stopped. Started by the API (see main.py) or `kivi-ui worker`."""
 
-    def __init__(self, interval: float = 1.0):
+    def __init__(self, interval: float = 1.0, tick_seconds: float = 30.0):
         super().__init__(name="kivi-ui-worker", daemon=True)
         self.interval = interval
+        self.tick_seconds = tick_seconds
         self.stop_event = threading.Event()
 
     def run(self) -> None:
         requeue_stale()
+        next_tick = time.monotonic()
         while not self.stop_event.is_set():
             try:
+                if time.monotonic() >= next_tick:
+                    run_ticks()
+                    next_tick = time.monotonic() + self.tick_seconds
                 if run_one() is None:
                     self.stop_event.wait(self.interval)
             except Exception:  # noqa: BLE001 - keep the loop alive across database hiccups

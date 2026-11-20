@@ -1,4 +1,4 @@
-"""Command line: ``kivi-ui create-admin | seed-demo | build-analytics``."""
+"""Command line: ``kivi-ui create-admin | seed-demo | worker``."""
 
 import argparse
 import getpass
@@ -7,7 +7,6 @@ import sys
 from pydantic import ValidationError
 from sqlalchemy import select
 
-from .analytics.service import build_demo
 from .config import get_settings
 from .db import get_sessionmaker
 from .models import Role, User, UserStatus
@@ -80,7 +79,6 @@ def seed_demo(args: argparse.Namespace) -> int:
         for username, email, name, role, status in DEMO_USERS:
             print(f"user '{username}': {_upsert(db, username, email, name, role, status, password)}")
         db.commit()
-        payload = build_demo(db)
         admin = db.scalar(select(User).where(User.username == "admin"))
         from .demo import seed_datasets
 
@@ -95,14 +93,10 @@ def seed_demo(args: argparse.Namespace) -> int:
 
         for item in seed_strategy(db, admin, analyst):
             print(f"demo data: {item}")
-    print(f"analytics snapshot: {payload['meta']['sample']['rows']} applications")
-    return 0
+        from .demo import seed_monitors
 
-
-def build_analytics(_: argparse.Namespace) -> int:
-    with get_sessionmaker()() as db:
-        payload = build_demo(db)
-    print(f"analytics snapshot: {payload['meta']['sample']['rows']} applications")
+        for item in seed_monitors(db, admin, analyst):
+            print(f"demo data: {item}")
     return 0
 
 
@@ -110,6 +104,7 @@ def worker(_: argparse.Namespace) -> int:
     """Run the background job worker in the foreground (when the API runs with KIVI_RUN_WORKER=false)."""
     from . import model_jobs  # noqa: F401  (registers job handlers)
     from .jobs import Worker
+    from .monitoring import service  # noqa: F401  (registers the schedule tick)
 
     loop = Worker()
     print("kivi-ui worker: waiting for jobs (Ctrl+C to stop)")
@@ -131,12 +126,11 @@ def main(argv: list[str] | None = None) -> int:
     admin.add_argument("--password", help="omit to be prompted")
     admin.set_defaults(func=create_admin)
 
-    seed = commands.add_parser("seed-demo", help="create demo accounts, data, models and strategies")
+    seed = commands.add_parser(
+        "seed-demo", help="create demo accounts, data, models, strategies and monitors"
+    )
     seed.add_argument("--refresh", action="store_true", help="remove demo content first and re-create it")
     seed.set_defaults(func=seed_demo)
-    commands.add_parser("build-analytics", help="recompute the demo analytics").set_defaults(
-        func=build_analytics
-    )
 
     commands.add_parser("worker", help="run the background job worker").set_defaults(func=worker)
 

@@ -21,9 +21,9 @@ from kivi_ui.security import hash_password  # noqa: E402
 PASSWORD = "Passw0rd-test"
 # CASCADE also covers the indicators <-> binning_schemes foreign key cycle.
 TABLES = (
-    "decision_logs, api_tokens, risk_list_items, risk_lists, strategy_reviews, strategy_versions, strategies,"
-    " model_reviews, model_versions, risk_models, jobs, binning_schemes, indicators, dataset_columns,"
-    " datasets, audit_logs, analytics_snapshots, users"
+    "alerts, monitor_runs, monitors, decision_logs, api_tokens, risk_list_items, risk_lists,"
+    " strategy_reviews, strategy_versions, strategies, model_reviews, model_versions, risk_models, jobs,"
+    " binning_schemes, indicators, dataset_columns, datasets, audit_logs, users"
 )
 
 

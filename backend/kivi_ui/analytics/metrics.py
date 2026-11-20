@@ -1,4 +1,4 @@
-"""Model evaluation helpers shared by the demo snapshot and scorecard training."""
+"""Model evaluation helpers: ROC, gains, score bands and PSI."""
 
 from typing import Any
 

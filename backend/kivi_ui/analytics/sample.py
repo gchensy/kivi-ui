@@ -171,6 +171,10 @@ def simulate(as_of: date, *, seed: int = 7) -> pd.DataFrame:
             "target": target,
         }
     )
+    # Synthetic mobile numbers from a separate stream, so every other draw is unchanged.
+    phones = np.random.default_rng(seed + 1000).choice(10**9, size=n, replace=False)
+    prefixes = np.random.default_rng(seed + 1001).choice([13, 15, 17, 18, 19], size=n)
+    frame.insert(2, "phone", [f"{p}{x:09d}" for p, x in zip(prefixes, phones, strict=True)])
     # Unreported income and employment, as in real application data.
     frame.loc[rng.random(n) < 0.03, "monthly_income"] = np.nan
     frame.loc[rng.random(n) < 0.045, "employment_years"] = np.nan

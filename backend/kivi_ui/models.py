@@ -287,3 +287,158 @@ class ModelReview(Base):
 
     version: Mapped[ModelVersion] = relationship(back_populates="reviews")
     actor: Mapped[User | None] = relationship(lazy="joined")
+
+
+# ---- P4: strategies, watchlists, API tokens and decisions ----------------------------------
+
+
+class Strategy(Base):
+    __tablename__ = "strategies"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(128))
+    name_en: Mapped[str | None] = mapped_column(String(128))
+    scene: Mapped[str] = mapped_column(String(16), default="admission")
+    description: Mapped[str] = mapped_column(String(2000), default="")
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    owner: Mapped[User | None] = relationship(lazy="joined")
+    versions: Mapped[list["StrategyVersion"]] = relationship(
+        back_populates="strategy", cascade="all, delete-orphan", order_by="StrategyVersion.version.desc()"
+    )
+
+
+class StrategyVersion(Base):
+    __tablename__ = "strategy_versions"
+    __table_args__ = (
+        UniqueConstraint("strategy_id", "version"),
+        Index("uq_strategy_online", "strategy_id", unique=True, postgresql_where=text("status = 'online'")),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    strategy_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("strategies.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int]
+    status: Mapped[str] = mapped_column(
+        String(16), default="draft"
+    )  # draft|in_review|approved|online|retired
+    definition: Mapped[dict[str, Any]] = mapped_column(default=dict)  # {"default_decision", "rules": [...]}
+    backtest: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    notes: Mapped[str] = mapped_column(String(2000), default="")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    submitted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    submitted_at: Mapped[datetime | None]
+    approved_at: Mapped[datetime | None]
+    online_at: Mapped[datetime | None]
+    retired_at: Mapped[datetime | None]
+
+    strategy: Mapped[Strategy] = relationship(back_populates="versions")
+    author: Mapped[User | None] = relationship(foreign_keys=[created_by], lazy="joined")
+    submitter: Mapped[User | None] = relationship(foreign_keys=[submitted_by], lazy="joined")
+    approver: Mapped[User | None] = relationship(foreign_keys=[approved_by], lazy="joined")
+    reviews: Mapped[list["StrategyReview"]] = relationship(
+        back_populates="version", cascade="all, delete-orphan", order_by="StrategyReview.id"
+    )
+
+
+class StrategyReview(Base):
+    __tablename__ = "strategy_reviews"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("strategy_versions.id", ondelete="CASCADE"), index=True
+    )
+    action: Mapped[str] = mapped_column(String(16))
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    comment: Mapped[str] = mapped_column(String(1000), default="")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    version: Mapped[StrategyVersion] = relationship(back_populates="reviews")
+    actor: Mapped[User | None] = relationship(lazy="joined")
+
+
+class RiskList(Base):
+    """A black, white or grey list of identifiers (phones, ID numbers, devices, ...)."""
+
+    __tablename__ = "risk_lists"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(128))
+    name_en: Mapped[str | None] = mapped_column(String(128))
+    kind: Mapped[str] = mapped_column(String(16), default="black")  # black|white|gray
+    dimension: Mapped[str] = mapped_column(String(16), default="phone")  # phone|id_no|device|ip|company|other
+    description: Mapped[str] = mapped_column(String(1000), default="")
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    owner: Mapped[User | None] = relationship(lazy="joined")
+
+
+class RiskListItem(Base):
+    """One listed value, stored as an HMAC digest plus a masked form for display."""
+
+    __tablename__ = "risk_list_items"
+    __table_args__ = (UniqueConstraint("list_id", "value_hash"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    list_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("risk_lists.id", ondelete="CASCADE"), index=True)
+    value_hash: Mapped[str] = mapped_column(String(64))
+    value_masked: Mapped[str] = mapped_column(String(64))
+    reason: Mapped[str] = mapped_column(String(500), default="")
+    expires_at: Mapped[datetime | None]
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    author: Mapped[User | None] = relationship(lazy="joined")
+
+
+class ApiToken(Base):
+    """A bearer token for machine callers of the decision API; only its digest is stored."""
+
+    __tablename__ = "api_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(128))
+    prefix: Mapped[str] = mapped_column(String(16))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    last_used_at: Mapped[datetime | None]
+    expires_at: Mapped[datetime | None]
+    revoked_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    owner: Mapped[User | None] = relationship(lazy="joined")
+
+
+class DecisionLog(Base):
+    __tablename__ = "decision_logs"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    request_id: Mapped[str] = mapped_column(String(64), unique=True)
+    strategy_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("strategies.id", ondelete="SET NULL"), index=True
+    )
+    version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("strategy_versions.id", ondelete="SET NULL")
+    )
+    strategy_code: Mapped[str] = mapped_column(String(64))
+    version: Mapped[int]
+    decision: Mapped[str] = mapped_column(String(16), index=True)
+    reason: Mapped[str] = mapped_column(String(500), default="")
+    hit_rules: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    scores: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    trace: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    input: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    latency_ms: Mapped[float] = mapped_column(default=0.0)
+    source: Mapped[str] = mapped_column(String(16), default="api")  # api|console|demo
+    token_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("api_tokens.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)

@@ -9,7 +9,18 @@ from . import __version__, model_jobs  # noqa: F401  (registers job handlers)
 from .config import get_settings
 from .errors import install_error_handlers
 from .jobs import Worker
-from .routes import analytics, audit_logs, auth, datasets, indicators, models, users
+from .routes import (
+    analytics,
+    audit_logs,
+    auth,
+    datasets,
+    decisions,
+    indicators,
+    lists,
+    models,
+    strategies,
+    users,
+)
 
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -43,6 +54,7 @@ def create_app() -> FastAPI:
         if (
             request.method in UNSAFE_METHODS
             and request.url.path.startswith("/api/")
+            and not request.url.path.startswith("/api/v1/decide/")  # bearer-token API, no cookies
             and "x-requested-with" not in request.headers
         ):
             return JSONResponse(
@@ -52,7 +64,18 @@ def create_app() -> FastAPI:
         return await call_next(request)
 
     api = APIRouter(prefix="/api/v1")
-    for module in (auth, users, audit_logs, analytics, datasets, indicators, models):
+    for module in (
+        auth,
+        users,
+        audit_logs,
+        analytics,
+        datasets,
+        indicators,
+        models,
+        strategies,
+        lists,
+        decisions,
+    ):
         api.include_router(module.router)
 
     @api.get("/health", tags=["meta"])

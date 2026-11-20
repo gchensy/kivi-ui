@@ -10,7 +10,7 @@
 
 **kivi-ui** 是一个开源的金融风控管理平台，覆盖「数据 → 指标 → 模型 → 策略 → 风控监控」全链路。分箱、WOE、IV、PSI 等统计计算由 [kivi](https://github.com/gchensy/kivi) 完成，界面基于 [BoardUI](https://github.com/BoardUI/boardui) 设计体系。
 
-### 功能（P1–P3）
+### 功能（P1–P4）
 
 - **账户**：登录、注册（默认需管理员审核）、退出、修改密码、个人资料；连续 5 次失败锁定 15 分钟
 - **角色**：管理员、分析师；管理员可创建账户、激活注册、调整角色、停用、重置密码
@@ -24,9 +24,13 @@
 - **稳定性监控**：月度分数 PSI、月度 AUC/KS、指标 × 月份 PSI 热力图，超阈值自动生成预警
 - **模型管理**：评分卡训练向导（OOT 与测试集划分、在训练集上重拟合分箱、IV → VIF → 系数符号 → 显著性逐步筛选、PDO 刻度），后台任务队列训练；版本报告含各样本 AUC/KS/Gini、ROC、KS 曲线、分数分布与 PSI、系数与 p 值、VIF、变量稳定性、评分卡分值与筛选记录
 - **评审与上线**：草稿 → 待审批 → 已批准 → 已上线 → 已下线，四眼原则（作者与提交人不能审批），每个模型只有一个在线版本，全程评审记录；批量打分生成新的数据集
+- **策略管理**：规则编辑器（全部/任一条件组可嵌套，13 种运算符，可引用在线模型的分数与违约概率、名单，终止规则用于白名单）；策略版本沿用评审上线流程；在带标签的数据集上回测，给出决策分布、各决策坏账率、规则命中/独占/决定数、月度通过率，以及与另一版本的切换矩阵；单笔试算展示每个条件的实际值
+- **名单管理**：黑名单、白名单、灰名单，按手机号、身份证号、设备号等维度；原值只保存 HMAC 摘要并脱敏展示，支持批量导入、有效期和精确查找（空格、短横线不影响匹配）
+- **实时决策接口**：`POST /api/v1/decide/{策略编码}`，API 令牌鉴权（只保存哈希），请求号幂等重放，在线策略缓存在内存中、上线和名单变更即时生效；每次调用写入决策记录
+- **决策记录**：按策略、决策、来源、命中规则、请求号筛选，查看请求数据（名单字段脱敏）与执行轨迹
 - **中英双语、明暗主题** 一键切换；所有图表都可切换为表格查看
 
-演示数据为模拟的零售信贷申请样本（12 个月、约 2.4 万笔，最后三个月带有渠道与查询次数漂移），首次启动即有完整的分析结果。
+演示数据为模拟的零售信贷申请样本（12 个月、约 2.4 万笔，最后三个月带有渠道与查询次数漂移），首次启动即有完整的分析结果、一个已上线的准入策略和近 30 天的决策记录。
 
 ### 技术栈
 
@@ -66,7 +70,7 @@
    pnpm dev
    ```
 
-`seed-demo` 会创建演示账户 `admin`（管理员）、`analyst`（分析师）和一个待审核的 `newcomer`，密码为 `backend/.env` 中的 `KIVI_DEMO_PASSWORD`，仅供本地演示使用。它还会导入两个演示数据集（模拟零售信贷样本、kivi 自带的银行营销样本），登记 12 个指标，并训练一个已上线的申请评分卡 RETAIL_APP v1。
+`seed-demo` 会创建演示账户 `admin`（管理员）、`analyst`（分析师）和一个待审核的 `newcomer`，密码为 `backend/.env` 中的 `KIVI_DEMO_PASSWORD`，仅供本地演示使用。它还会导入两个演示数据集（模拟零售信贷样本、kivi 自带的银行营销样本），登记 12 个指标，训练一个已上线的申请评分卡 RETAIL_APP v1，创建手机号黑名单与白名单，以及准入策略 RETAIL_APPLY（v1 已上线、v2 草稿，均已回测）和约 2,500 条演示决策记录。
 
 创建正式管理员：
 
@@ -87,8 +91,22 @@ cd backend && uv run kivi-ui create-admin --username alice --email alice@example
 | `KIVI_SESSION_HOURS` | 会话有效期（小时） | `8` |
 | `KIVI_REQUIRE_FOUR_EYES` | 作者与提交人不能审批自己的模型版本 | `true` |
 | `KIVI_RUN_WORKER` | 在 API 进程内运行后台任务；设为 `false` 时用 `uv run kivi-ui worker` 单独运行 | `true` |
+| `KIVI_LIST_KEY` | 名单摘要的 HMAC 密钥；建议单独设置，更换会话密钥时名单仍然有效 | 同 `KIVI_SECRET_KEY` |
 
 前端通过 `KIVI_API_URL`（默认 `http://127.0.0.1:8000`）把 `/api/*` 反向代理到后端，浏览器与后端始终同源。
+
+### 调用决策接口
+
+管理员在「API 令牌」页面创建令牌（只显示一次），业务系统按策略编码调用：
+
+```bash
+curl -X POST http://localhost:3000/api/v1/decide/RETAIL_APPLY \
+  -H "Authorization: Bearer kv_…" \
+  -H "Content-Type: application/json" \
+  -d '{"request_id": "APP-0001", "data": {"phone": "13800001234", "age": 35, "inquiries_6m": 2, "overdue_24m": 0, "channel": "app"}}'
+```
+
+返回决策（`pass` / `review` / `reject`）、原因码、命中规则、模型分与违约概率、缺失字段和耗时。同一个 `request_id` 再次调用会直接返回第一次的结果（`replayed: true`）。
 
 ### 测试
 
@@ -104,7 +122,7 @@ cd web && pnpm typecheck && pnpm build
 | P1 | 账户、权限、审计、风控可视化 | ✅ |
 | P2 | 数据集上传与画像、指标筛选、指标目录、分箱工作台与方案、指标稳定性 | ✅ |
 | P3 | 评分卡开发向导、模型版本、评审上线、批量打分、后台任务队列 | ✅ |
-| P4 | 策略规则、回测、名单、实时决策接口 | 计划中 |
+| P4 | 策略规则、回测与版本对比、名单、实时决策接口、决策记录、API 令牌 | ✅ |
 | P5 | 监控任务调度、预警处理 | 计划中 |
 
 完整设计见 [docs/design.md](docs/design.md)。
@@ -117,7 +135,7 @@ cd web && pnpm typecheck && pnpm build
 
 **kivi-ui** is an open-source credit risk management platform covering data, indicators, models, strategies and monitoring. Binning, WOE, IV and PSI are computed with [kivi](https://github.com/gchensy/kivi); the interface is built on the [BoardUI](https://github.com/BoardUI/boardui) design system.
 
-### Features (P1–P3)
+### Features (P1–P4)
 
 - **Accounts**: sign in, sign up (administrator approval by default), sign out, change password, profile; 15-minute lockout after 5 failed attempts
 - **Roles**: administrator and analyst; administrators create accounts, approve sign-ups, change roles, disable accounts and reset passwords
@@ -131,9 +149,13 @@ cd web && pnpm typecheck && pnpm build
 - **Stability**: monthly score PSI, monthly AUC/KS and an indicator × month PSI heatmap, with alerts above thresholds
 - **Models**: a scorecard training wizard (OOT and test splits, binning refitted on training rows, stepwise IV → VIF → coefficient sign → significance selection, PDO scaling) trained by a background job queue; version reports with AUC/KS/Gini per split, ROC, KS curve, score distribution and PSI, coefficients with p-values and VIF, variable stability, scorecard points and the selection log
 - **Review and deployment**: draft → in review → approved → online → retired with four eyes (authors and submitters can't approve), one online version per model and a full review trail; batch scoring saves a new dataset
+- **Strategies**: a rule editor (nested all/any groups, 13 operators, online model scores and default probabilities, watchlists, and terminal rules for whitelists); strategy versions follow the same review flow; backtests on a labelled dataset show the decision mix, bad rate per decision, hits/exclusive/decisive counts per rule, monthly approval rate and a swap matrix against another version; a test console shows the actual value behind every condition
+- **Watchlists**: black, white and grey lists by phone, ID number, device and more; values are kept only as HMAC digests and shown masked, with bulk import, expiry and exact lookup (spaces and dashes don't matter)
+- **Real-time decision API**: `POST /api/v1/decide/{strategy code}` with API tokens (stored hashed), idempotent replay by request ID and an in-memory cache of online strategies that lifecycle and watchlist changes refresh at once; every call is logged
+- **Decision log**: filter by strategy, outcome, source, rule hit or request ID, and inspect the request (watchlist fields masked) and its trace
 - **Chinese/English and light/dark** switching everywhere; every chart has a table view
 
-The demo data is a simulated retail credit application sample (12 months, about 24,000 applications, with channel and inquiry drift in the last three months), so every page has real analysis on first start.
+The demo data is a simulated retail credit application sample (12 months, about 24,000 applications, with channel and inquiry drift in the last three months), so every page has real analysis, an online admission strategy and 30 days of decisions on first start.
 
 ### Stack
 
@@ -173,7 +195,7 @@ Requires Docker, [uv](https://docs.astral.sh/uv/), Node.js 20+ and pnpm.
    pnpm dev
    ```
 
-`seed-demo` creates the demo accounts `admin` (administrator), `analyst` (analyst) and a pending sign-up `newcomer`. Their password is `KIVI_DEMO_PASSWORD` in `backend/.env`, for local demos only. It also imports two demo datasets (the simulated retail credit sample and kivi's bank marketing sample), registers 12 indicators and trains the online application scorecard RETAIL_APP v1.
+`seed-demo` creates the demo accounts `admin` (administrator), `analyst` (analyst) and a pending sign-up `newcomer`. Their password is `KIVI_DEMO_PASSWORD` in `backend/.env`, for local demos only. It also imports two demo datasets (the simulated retail credit sample and kivi's bank marketing sample), registers 12 indicators, trains the online application scorecard RETAIL_APP v1, and creates a phone blacklist and whitelist, the admission strategy RETAIL_APPLY (v1 online, v2 draft, both backtested) and about 2,500 demo decisions.
 
 Create a real administrator:
 
@@ -194,8 +216,22 @@ The API reads `KIVI_`-prefixed environment variables (see `backend/.env.example`
 | `KIVI_SESSION_HOURS` | Session lifetime in hours | `8` |
 | `KIVI_REQUIRE_FOUR_EYES` | Authors and submitters can't approve their own model versions | `true` |
 | `KIVI_RUN_WORKER` | Run background jobs inside the API process; with `false`, run `uv run kivi-ui worker` separately | `true` |
+| `KIVI_LIST_KEY` | HMAC key for watchlist digests; set it separately so watchlists survive a session key rotation | `KIVI_SECRET_KEY` |
 
 The web app proxies `/api/*` to `KIVI_API_URL` (default `http://127.0.0.1:8000`), so the browser always talks to one origin.
+
+### Calling the decision API
+
+An administrator creates a token on the API tokens page (it is shown once). Business systems then call a strategy by its code:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/decide/RETAIL_APPLY \
+  -H "Authorization: Bearer kv_…" \
+  -H "Content-Type: application/json" \
+  -d '{"request_id": "APP-0001", "data": {"phone": "13800001234", "age": 35, "inquiries_6m": 2, "overdue_24m": 0, "channel": "app"}}'
+```
+
+The response holds the decision (`pass`, `review` or `reject`), the reason code, the rules hit, model scores and default probabilities, missing fields and latency. Repeating a `request_id` returns the first answer (`replayed: true`).
 
 ### Tests
 
@@ -211,7 +247,7 @@ cd web && pnpm typecheck && pnpm build
 | P1 | Accounts, roles, audit, risk visualisation | ✅ |
 | P2 | Dataset upload and profiling, screening, indicator catalogue, binning workbench and schemes, indicator stability | ✅ |
 | P3 | Scorecard wizard, model versions, review and deployment, batch scoring, background job queue | ✅ |
-| P4 | Strategy rules, backtesting, watchlists, real-time decision API | Planned |
+| P4 | Strategy rules, backtesting and version comparison, watchlists, real-time decision API, decision log, API tokens | ✅ |
 | P5 | Scheduled monitors and alert handling | Planned |
 
 See [docs/design.md](docs/design.md) for the full design (in Chinese).

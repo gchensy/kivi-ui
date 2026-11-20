@@ -116,33 +116,38 @@
 - 生命周期：草稿 → 待审批 → 已批准 → 已上线 → 已下线；每个模型同时只有一个在线版本。
 
 ### 3.6 策略管理（P4）
-- **策略**：编码、名称、场景（准入 / 反欺诈 / 授信额度 / 定价 / 贷中 / 催收）、负责人，下挂多个版本。
-- **策略版本 = 有序规则集**，规则用结构化 JSON 条件（Pydantic 校验，不用 `eval`）：
+- **策略**：编码、名称、场景（准入 / 反欺诈 / 授信额度 / 定价 / 贷中 / 催收 / 其他）、负责人，下挂多个版本。
+- **策略版本 = 有序规则集 + 默认决策**，规则用结构化 JSON 条件（Pydantic 校验、`extra="forbid"`，不用 `eval`）：
   ```json
   {
-    "code": "R003", "name": "低分且年轻客群拒绝", "priority": 30, "enabled": true,
-    "when": {"all": [
-      {"field": "model:SC_RETAIL.score", "op": "<", "value": 45},
-      {"any": [
-        {"field": "age", "op": "<", "value": 22},
+    "code": "R05", "name": "评分 < 520", "name_en": "Score below 520", "enabled": true,
+    "decision": "reject", "terminal": false, "reason": "LOW_SCORE",
+    "when": {"mode": "all", "items": [
+      {"field": "model:RETAIL_APP.score", "op": "lt", "value": 520},
+      {"mode": "any", "items": [
+        {"field": "age", "op": "lt", "value": 22},
         {"field": "phone", "op": "in_list", "value": "BL_PHONE"}
       ]}
-    ]},
-    "then": {"decision": "reject", "reason": "LOW_SCORE_YOUNG"}
+    ]}
   }
   ```
-  - 运算符：`= != > >= < <= in not_in between is_null not_null in_list not_in_list`。
-  - 输入字段：请求入参、指标、模型分（`model:<模型编码>.score|prob`，自动调用该模型的在线版本）、名单命中。
-  - 决策合并：执行全部启用规则，取最严重结果（reject > review > pass），无命中则用默认决策；记录全部命中规则。
-  - 额外支持「分数段决策表」规则类型：分数区间 → 决策 / 额度系数。
-- **规则编辑器**：BoardUI Select / Input / Switch Card 组成的条件行，支持 AND/OR 分组嵌套、拖动排序、启停。
-- **回测**：选数据集运行策略版本 → 通过率、拒绝率、每条规则命中率与独占命中率、通过客群坏率 vs 拒绝客群坏率；两个版本并排对比。规则引擎有向量化（pandas）与单条两种执行路径，共用同一套语义测试。
-- 生命周期同模型；发布后的在线版本供决策接口使用。
+  - 运算符：`eq ne gt ge lt le in not_in between is_null not_null in_list not_in_list`；条件组至少一项（空的「全部满足」组会命中所有样本，因此不允许）。
+  - 输入字段：请求入参、模型输出（`model:<模型编码>.score|prob`，编码自动转大写，调用该模型的在线版本）、名单命中（名单编码自动转大写）。
+  - 决策合并：先看终止规则（如白名单），命中即定；否则取最严重结果（reject > review > pass），同级取排序靠前的规则；无命中用默认决策。所有命中规则都会记录。空值参与比较一律为假。
+  - 「分数段决策表」规则类型暂未实现，可用多条区间规则表达。
+- **规则编辑器**：规则卡片（编码、中英文名称、决策、原因码、终止、启用、上下移动），条件行由字段（带数据集字段、模型输出提示）、运算符、取值组成，支持「全部 / 任一」两层嵌套。
+- **回测**：选带标签的数据集运行策略版本 → 通过 / 人工审核 / 拒绝率、各决策坏账率、每条规则的命中数与命中率、独占数（只被这条规则拦下）、决定数（最终由这条规则定案）与命中样本坏账率、月度通过率；可选另一版本对比，给出 3×3 切换矩阵（行：对比版本决策，列：本版本决策，含每格坏账率）。规则引擎只有一套向量化（pandas）实现，单笔决策是一行的数据框，因此回测与实时接口语义一致。
+- **试算**：输入一条 JSON 请求，返回决策、模型分、缺失字段与逐条件执行轨迹（含实际值），不写决策记录。
+- 生命周期同模型（四眼原则、每个策略一个在线版本）；上线前检查：至少一条规则、引用的名单存在、引用的模型有在线版本。
 
 ### 3.7 风控中心（P4–P5）
-- **实时决策接口**：`POST /api/v1/decide/{strategy_code}`，使用 API Token（服务账号）鉴权，返回决策、命中规则、模型分、耗时、决策流水号；在线策略与模型在进程内缓存。
-- **决策记录**：分页查询、按决策/规则/时间筛选、查看单笔执行轨迹。
-- **名单管理**：黑 / 白 / 灰名单，维度（身份证 / 手机号 / 设备 / IP / 企业统一社会信用代码），批量导入、有效期、原因。敏感值存 HMAC 摘要 + 脱敏展示（如 `138****1234`），原值不落库。
+- **实时决策接口**（P4）：`POST /api/v1/decide/{strategy_code}`，使用 API 令牌（`Authorization: Bearer kv_…`，库中只存 SHA-256）鉴权，返回决策、原因码、命中规则、模型分与违约概率、缺失字段、耗时、请求号。
+  - 同一 `request_id` 重放第一次的结果（`replayed: true`）；用在另一策略上返回 409 `request_id_conflict`；并发重复请求以先写入者为准并按重放返回。
+  - 在线策略连同模型与名单摘要在进程内缓存 30 秒；上线 / 下线、名单条目增删、模型上线 / 下线会立即清空本进程缓存，多进程部署时其他进程最迟 30 秒后生效。
+  - 下线被在线策略引用的模型、删除被在线策略引用的名单都会被拒绝（`model_in_use` / `list_in_use`）。
+- **决策记录**（P4）：分页查询，按策略、决策、来源、命中规则、请求号前缀筛选，查看请求数据与单笔执行轨迹；名单字段在请求数据与轨迹中都只保存脱敏值。
+- **名单管理**（P4）：黑 / 白 / 灰名单，维度（手机号 / 身份证号 / 设备号 / IP / 企业代码 / 账号 / 其他），批量导入、有效期、原因、精确查找。值先规范化（去掉空格与短横线、转大写，整数形式的浮点数去掉 `.0`）再做 HMAC-SHA256（密钥 `KIVI_LIST_KEY`，默认同会话密钥）并脱敏展示（如 `138****1234`），原值不落库；移除条目需确认，因为原值无法再查看。
+- **API 令牌**（P4）：管理员创建（可设有效期，明文只显示一次）、查看最近使用时间、吊销。
 - **监控**：
   | 对象 | 指标 | 计算 | 默认阈值（预警 / 告警） |
   | --- | --- | --- | --- |
@@ -242,9 +247,9 @@ jobs               id, kind(profile|binning|batch_binning|train|score|backtest|m
 | 数据 | `GET/POST datasets`（multipart 上传）· `GET/PATCH/DELETE datasets/{id}` · `GET datasets/{id}/preview` · `POST datasets/{id}/profile` · `PUT datasets/{id}/columns` |
 | 指标 | `GET/POST indicators` · `POST indicators/import` · `GET/PATCH/DELETE indicators/{id}` · `POST indicators/{id}/binning` · `GET indicators/{id}/schemes` · `POST indicators/{id}/psi` · `POST indicators/batch-binning` |
 | 模型 | `GET/POST models` · `GET/PATCH models/{id}` · `POST models/{id}/versions`（训练任务）· `GET model-versions/{id}` · `POST model-versions/{id}/{submit\|approve\|reject\|online\|retire}` · `POST model-versions/{id}/score` |
-| 策略 | `GET/POST strategies` · `GET/PATCH strategies/{id}` · `POST strategies/{id}/versions` · `PUT strategy-versions/{id}/rules` · `POST strategy-versions/{id}/backtest` · `POST strategy-versions/{id}/{submit\|approve\|reject\|online\|retire}` |
+| 策略 | `GET/POST strategies` · `GET strategies/fields` · `GET/PATCH/DELETE strategies/{id}` · `POST strategies/{id}/versions` · `GET/PUT/DELETE strategy-versions/{id}` · `POST strategy-versions/{id}/backtest` · `POST strategy-versions/{id}/evaluate`（试算）· `POST strategy-versions/{id}/{submit\|approve\|reject\|online\|retire}` |
 | 决策 | `POST decide/{strategy_code}`（API Token）· `GET decisions` · `GET decisions/{request_id}` |
-| 名单 | `GET/POST risk-lists` · `GET/POST/DELETE risk-lists/{id}/items` · `POST risk-lists/{id}/import` · `POST risk-lists/{id}/check` |
+| 名单 | `GET/POST risk-lists` · `GET/PATCH/DELETE risk-lists/{id}` · `GET/POST risk-lists/{id}/items`（POST 为批量导入）· `DELETE risk-lists/{id}/items/{item_id}` · `POST risk-lists/{id}/check` |
 | 监控 | `GET/POST monitors` · `PATCH/DELETE monitors/{id}` · `POST monitors/{id}/run` · `GET monitors/{id}/runs` · `GET alerts` · `PATCH alerts/{id}` |
 | 其他 | `GET dashboard/summary` · `GET audit-logs` · `GET jobs/{id}` · `GET kivi/methods`（可用分箱方法） |
 
@@ -280,7 +285,7 @@ jobs               id, kind(profile|binning|batch_binning|train|score|backtest|m
 /models                   模型列表          /models/new            评分卡向导
 /models/[id]              版本列表          /models/[id]/v/[ver]   指标 · 系数 · 效果 · 审批记录
 /strategies               策略列表          /strategies/[id]/v/[ver] 规则编辑 · 回测 · 审批记录
-/risk/decisions           决策记录          /risk/lists            名单管理
+/decisions                决策记录          /lists  /lists/[id]    名单管理
 /risk/monitors            监控配置          /risk/alerts           预警中心
 /admin/users  /admin/tokens  /admin/audit
 ```
@@ -355,7 +360,7 @@ kivi-ui/
 | **P1 骨架、账户与可视化** ✅ | 仓库、Postgres、迁移、登录/注册/退出/改密、用户管理、审计、BoardUI 应用框架；风控总览用 kivi 在演示样本上实算：KPI、指标 IV 排行、WOE 与坏率图、ROC/KS、分数分布、月度 PSI、模拟决策趋势 | 能注册 → 管理员激活 → 登录 → 看到完整的风控总览图表 |
 | **P2 数据与指标** ✅ | 数据集上传/预览/画像、指标目录、分箱工作台（7 种方法 + 特殊值）、多方案与默认方案、按月 PSI、批量筛选与一键登记 | 上传 bank 数据，看到 age 的 WOE/IV 图表并保存分箱方案 |
 | **P3 模型** ✅ | 后台任务队列、评分卡向导、版本详情（AUC/KS/ROC/Lift）、审批与上线、批量打分 | 训练评分卡并走完提交—审批—上线 |
-| **P4 策略与决策** | 规则 DSL 与编辑器、回测与版本对比、名单、决策 API、决策记录、API Token | 用 curl 调决策接口得到命中规则与模型分 |
+| **P4 策略与决策** ✅ | 规则 DSL 与编辑器、回测与版本对比、名单、决策 API、决策记录、API Token | 用 curl 调决策接口得到命中规则与模型分 |
 | **P5 监控与总览** | 监控配置与调度、预警中心、风控总览真实数据 | 改动样本触发 PSI 预警并在总览出现 |
 
 每期结束都能独立运行，并在浏览器里实际走通后再进入下一期。
@@ -368,9 +373,10 @@ kivi-ui/
 2. 角色只保留管理员、分析师两种。
 3. 评分：P1 采用 PDO 刻度（600 / 20:1 / 50），因为 PyPI 上的 kivi 0.3.0 尚无变量分功能；kivi 新版发布后增加 kivi 0–100 分口径。
 4. 前端用 Next.js，与 BoardUI 一致。
-5. kivi 以 PyPI 包形式（`kivi>=0.3.0`）装入后端 `.venv`，不引用本地路径。
+5. kivi 以 PyPI 包形式（现为 `kivi>=0.4.0`）装入后端 `.venv`，不引用本地路径。
 6. 按 P1→P5 逐期交付；初期以好看、可交互的可视化为首要目标。
 7. 代码托管在 GitHub `gchensy/kivi-ui`。
 8. 开源协议 MIT；界面支持中英双语与明暗主题切换。
 9. P2 的上传、画像与分箱均为同步请求（单次上限 20 MB / 50 万行）；后台任务队列推迟到 P3，用于模型训练等耗时操作。分箱规则以 kivi-ui 自己的 JSON（切点、特殊值、类别映射）存储在 `binning_schemes.rule`。
 10. P3 的逻辑回归、p 值与 VIF 使用 statsmodels（kivi 0.4 不含建模接口）；分箱在训练集上用各指标默认方案的参数重新拟合；四眼原则同时约束作者与提交人；角色权限仅保留管理员（审批、上线、下线）与分析师（开发、提交）。
+11. P4 的规则引擎为 kivi-ui 自研（kivi 不含规则执行）：一套 pandas 向量化实现同时服务回测、试算与实时接口；策略生命周期与模型共用 `routes/lifecycle.py`（先校验角色，再校验状态，最后校验四眼原则）。名单只存 HMAC 摘要；决策记录的请求数据与轨迹对名单字段脱敏。文本取值与数值列比较时，回测按列的存储类型比较，实时接口按请求里的 JSON 类型比较，数值字段应传数字。

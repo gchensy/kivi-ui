@@ -4,7 +4,22 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 
 import { api, ApiError } from "./api";
-import type { Analytics, Dataset, DatasetDetail, IndicatorDetail, IndicatorPage, ModelDetail, RiskModel, User, VersionDetail } from "./types";
+import type {
+  Analytics,
+  Dataset,
+  DatasetDetail,
+  FieldOptions,
+  IndicatorDetail,
+  IndicatorPage,
+  ModelDetail,
+  RiskList,
+  RiskModel,
+  StrategyDetail,
+  StrategyItem,
+  StrategyVersionDetail,
+  User,
+  VersionDetail,
+} from "./types";
 
 export const meKey = ["auth", "me"] as const;
 
@@ -75,4 +90,28 @@ export function useVersion(id: string) {
     queryFn: ({ signal }) => api<VersionDetail>(`/model-versions/${id}`, { signal }),
     refetchInterval: (query) => (query.state.data?.status === "training" ? 1500 : false),
   });
+}
+
+export function useStrategies() {
+  return useQuery({ queryKey: ["strategies"], queryFn: ({ signal }) => api<StrategyItem[]>("/strategies", { signal }) });
+}
+
+export function useStrategy(id: string) {
+  return useQuery({ queryKey: ["strategies", id], queryFn: ({ signal }) => api<StrategyDetail>(`/strategies/${id}`, { signal }) });
+}
+
+export function useStrategyVersion(id: string) {
+  return useQuery({ queryKey: ["strategy-versions", id], queryFn: ({ signal }) => api<StrategyVersionDetail>(`/strategy-versions/${id}`, { signal }) });
+}
+
+export function useFieldOptions(datasetId?: string) {
+  return useQuery({
+    queryKey: ["strategies", "fields", datasetId ?? ""],
+    queryFn: ({ signal }) => api<FieldOptions>(`/strategies/fields${datasetId ? `?dataset_id=${datasetId}` : ""}`, { signal }),
+    staleTime: 60_000,
+  });
+}
+
+export function useLists() {
+  return useQuery({ queryKey: ["risk-lists"], queryFn: ({ signal }) => api<RiskList[]>("/risk-lists", { signal }) });
 }

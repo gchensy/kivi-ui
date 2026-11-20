@@ -66,12 +66,17 @@ def create_admin(args: argparse.Namespace) -> int:
     return 0
 
 
-def seed_demo(_: argparse.Namespace) -> int:
+def seed_demo(args: argparse.Namespace) -> int:
     password = get_settings().demo_password
     if not password:
         print("Set KIVI_DEMO_PASSWORD (see backend/.env.example) to create demo accounts.", file=sys.stderr)
         return 1
     with get_sessionmaker()() as db:
+        if getattr(args, "refresh", False):
+            from .demo import refresh
+
+            refresh(db)
+            print("demo data: removed for re-seeding")
         for username, email, name, role, status in DEMO_USERS:
             print(f"user '{username}': {_upsert(db, username, email, name, role, status, password)}")
         db.commit()
@@ -85,6 +90,10 @@ def seed_demo(_: argparse.Namespace) -> int:
 
         analyst = db.scalar(select(User).where(User.username == "analyst"))
         for item in seed_model(db, admin, analyst):
+            print(f"demo data: {item}")
+        from .demo import seed_strategy
+
+        for item in seed_strategy(db, admin, analyst):
             print(f"demo data: {item}")
     print(f"analytics snapshot: {payload['meta']['sample']['rows']} applications")
     return 0
@@ -122,7 +131,9 @@ def main(argv: list[str] | None = None) -> int:
     admin.add_argument("--password", help="omit to be prompted")
     admin.set_defaults(func=create_admin)
 
-    commands.add_parser("seed-demo", help="create demo accounts and analytics").set_defaults(func=seed_demo)
+    seed = commands.add_parser("seed-demo", help="create demo accounts, data, models and strategies")
+    seed.add_argument("--refresh", action="store_true", help="remove demo content first and re-create it")
+    seed.set_defaults(func=seed_demo)
     commands.add_parser("build-analytics", help="recompute the demo analytics").set_defaults(
         func=build_analytics
     )

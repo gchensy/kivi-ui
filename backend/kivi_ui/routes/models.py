@@ -7,7 +7,6 @@ from fastapi import APIRouter, Request, status
 from sqlalchemy import func, select
 
 from .. import audit, jobs
-from ..config import get_settings
 from ..deps import CurrentUser, Db
 from ..errors import ApiError
 from ..model_schemas import (
@@ -23,18 +22,11 @@ from ..model_schemas import (
     VersionSummary,
 )
 from ..models import Indicator, Job, ModelReview, ModelVersion, RiskModel, Role
+from ..rules import runtime
 from .datasets import ensure_owner, get_dataset
+from .lifecycle import transition
 
 router = APIRouter(tags=["models"])
-
-# action -> (allowed from, new status, administrators only)
-TRANSITIONS = {
-    "submit": ({"draft"}, "in_review", False),
-    "approve": ({"in_review"}, "approved", True),
-    "reject": ({"in_review"}, "draft", True),
-    "online": ({"approved"}, "online", True),
-    "retire": ({"approved", "online"}, "retired", True),
-}
 
 
 def get_model(db: Db, model_id: uuid.UUID) -> RiskModel:
@@ -241,55 +233,14 @@ def score(version_id: uuid.UUID, body: ScoreIn, request: Request, user: CurrentU
 def review(
     version_id: uuid.UUID, action: str, body: ReviewIn, request: Request, user: CurrentUser, db: Db
 ) -> ModelVersion:
-    if action not in TRANSITIONS:
-        raise ApiError(404, "not_found", "Unknown action")
     version = get_version(db, version_id)
-    allowed, target, admin_only = TRANSITIONS[action]
-    if admin_only and user.role is not Role.admin:
-        raise ApiError(403, "forbidden", "Administrator role required")
-    if action == "submit" and user.role is not Role.admin and version.created_by != user.id:
-        raise ApiError(403, "forbidden", "Only the author or an administrator can submit this version")
-    if version.status not in allowed:
-        raise ApiError(
-            409,
-            "invalid_transition",
-            f"Cannot {action} a version that is {version.status}",
-            {"status": version.status},
-        )
-    makers = {version.submitted_by, version.created_by}
-    if action == "approve" and get_settings().require_four_eyes and user.id in makers:
-        raise ApiError(403, "four_eyes", "The author or submitter cannot approve their own version")
-
-    now = datetime.now(UTC)
-    if action == "submit":
-        version.submitted_by, version.submitted_at = user.id, now
-    elif action == "approve":
-        version.approved_by, version.approved_at = user.id, now
-    elif action == "reject":
-        version.submitted_by = version.submitted_at = None
-    elif action == "online":
-        current = db.scalar(
-            select(ModelVersion).where(
-                ModelVersion.model_id == version.model_id, ModelVersion.status == "online"
-            )
-        )
-        if current is not None:
-            current.status, current.retired_at = "retired", now
-            db.add(
-                ModelReview(
-                    version_id=current.id,
-                    action="retire",
-                    actor_id=user.id,
-                    comment=f"replaced by v{version.version}",
-                )
-            )
-            db.flush()
-        version.online_at = now
-    elif action == "retire":
-        version.retired_at = now
-    version.status = target
-    version.model.updated_at = now
-    db.add(ModelReview(version_id=version.id, action=action, actor_id=user.id, comment=body.comment.strip()))
+    was_online = version.status == "online"
+    transition(db, version, action, user, body.comment, parent="model_id", review_cls=ModelReview)
+    # Retiring the only online version would break every strategy that scores with it.
+    if action == "retire" and was_online:
+        if users := runtime.online_strategies_using(db, "models", version.model.code):
+            raise ApiError(409, "model_in_use", "An online strategy uses this model", {"strategies": users})
+    version.model.updated_at = datetime.now(UTC)
     audit.record(
         db,
         f"version.{action}",
@@ -301,6 +252,8 @@ def review(
         version=version.version,
     )
     db.commit()
+    if action in ("online", "retire"):
+        runtime.invalidate()  # strategies score with whichever version is online
     db.refresh(version)
     return version
 

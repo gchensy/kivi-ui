@@ -512,3 +512,212 @@ export interface RiskModel {
 export interface ModelDetail extends RiskModel {
   versions: VersionSummary[];
 }
+
+// ---- P4: strategies, watchlists, tokens, decisions --------------------------------------------
+
+export type RuleOp = "eq" | "ne" | "gt" | "ge" | "lt" | "le" | "in" | "not_in" | "between" | "is_null" | "not_null" | "in_list" | "not_in_list";
+export type StrategyScene = "admission" | "fraud" | "limit" | "pricing" | "behavior" | "collection" | "other";
+
+export interface RuleCondition {
+  field: string;
+  op: RuleOp;
+  value: unknown;
+}
+
+export interface RuleGroup {
+  mode: "all" | "any";
+  items: (RuleCondition | RuleGroup)[];
+}
+
+export interface RuleSpec {
+  code: string;
+  name: string;
+  name_en?: string | null;
+  enabled: boolean;
+  decision: Decision;
+  terminal: boolean;
+  reason: string;
+  when: RuleGroup;
+}
+
+export interface StrategyDefinition {
+  default_decision: Decision;
+  rules: RuleSpec[];
+}
+
+export interface BacktestRule {
+  code: string;
+  enabled: boolean;
+  hits: number;
+  hit_rate: number;
+  exclusive: number;
+  decisive: number;
+  bad_rate: number | null;
+}
+
+export interface BacktestSummary {
+  rows: number;
+  missing_fields: string[];
+  pass: number;
+  review: number;
+  reject: number;
+  pass_rate: number;
+  review_rate: number;
+  reject_rate: number;
+  bad_rate?: number | null;
+  bad_rate_by_decision?: Record<Decision, number | null>;
+  rules: BacktestRule[];
+  monthly?: { month: string; rows: number; pass_rate: number; reject_rate: number; pass_bad_rate?: number | null }[];
+}
+
+export interface Backtest {
+  dataset?: { id: string; name: string };
+  summary?: BacktestSummary;
+  ran_at?: string;
+  seconds?: number;
+  compare?: {
+    version_id: string;
+    version: number;
+    summary: BacktestSummary;
+    swap: { from: Decision; to: Decision; rows: number; bad_rate: number | null }[];
+  };
+}
+
+export interface StrategyVersionSummary {
+  id: string;
+  strategy_id: string;
+  version: number;
+  status: VersionStatus;
+  notes: string;
+  author: Person | null;
+  created_at: string;
+  updated_at: string;
+  submitted_at: string | null;
+  approved_at: string | null;
+  online_at: string | null;
+  retired_at: string | null;
+  rule_count: number;
+  pass_rate: number | null;
+}
+
+export interface StrategyVersionDetail extends StrategyVersionSummary {
+  strategy: { id: string; code: string; name: string; name_en: string | null; scene: StrategyScene };
+  definition: StrategyDefinition;
+  backtest: Backtest;
+  submitter: Person | null;
+  approver: Person | null;
+  reviews: { action: string; actor: Person | null; comment: string; created_at: string }[];
+}
+
+export interface StrategyItem {
+  id: string;
+  code: string;
+  name: string;
+  name_en: string | null;
+  scene: StrategyScene;
+  description: string;
+  owner: Person | null;
+  created_at: string;
+  updated_at: string;
+  version_count: number;
+  online: StrategyVersionSummary | null;
+  latest: StrategyVersionSummary | null;
+}
+
+export interface StrategyDetail extends StrategyItem {
+  versions: StrategyVersionSummary[];
+}
+
+export interface FieldOptions {
+  fields: { name: string; label: string | null; dtype: string | null; source: "column" | "indicator" | "model" }[];
+  models: { code: string; name: string; name_en: string | null; version: number }[];
+  lists: { code: string; name: string; name_en: string | null; kind: ListKind; dimension: string }[];
+}
+
+export interface TraceNode {
+  field?: string;
+  op?: RuleOp;
+  value?: unknown;
+  actual?: unknown;
+  mode?: "all" | "any";
+  items?: TraceNode[];
+  result: boolean;
+}
+
+export interface TraceRule {
+  code: string;
+  name: string;
+  name_en: string | null;
+  decision: Decision;
+  terminal: boolean;
+  hit: boolean;
+  when: TraceNode | null;
+}
+
+export interface DecisionResult {
+  request_id: string;
+  decision: Decision;
+  reason: string;
+  rules: { code: string; name: string; name_en: string | null; decision: Decision }[];
+  scores: Record<string, { score: number; probability: number }>;
+  strategy: { code: string; version: number };
+  missing_fields: string[];
+  latency_ms: number;
+  trace?: TraceRule[];
+}
+
+export type ListKind = "black" | "white" | "gray";
+
+export interface RiskList {
+  id: string;
+  code: string;
+  name: string;
+  name_en: string | null;
+  kind: ListKind;
+  dimension: string;
+  description: string;
+  owner: Person | null;
+  created_at: string;
+  updated_at: string;
+  item_count: number;
+  active_count: number;
+}
+
+export interface ListItem {
+  id: number;
+  value_masked: string;
+  reason: string;
+  expires_at: string | null;
+  author: Person | null;
+  created_at: string;
+}
+
+export interface ApiToken {
+  id: string;
+  name: string;
+  prefix: string;
+  owner: Person | null;
+  last_used_at: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  token?: string;
+}
+
+export interface DecisionRow {
+  request_id: string;
+  strategy_code: string;
+  version: number;
+  decision: Decision;
+  reason: string;
+  hit_rules: string[];
+  scores: Record<string, { score: number; probability: number }>;
+  latency_ms: number;
+  source: "api" | "console" | "demo";
+  created_at: string;
+}
+
+export interface DecisionDetail extends DecisionRow {
+  trace: TraceRule[];
+  input: Record<string, unknown>;
+}

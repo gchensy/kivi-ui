@@ -49,6 +49,29 @@ export async function api<T>(path: string, init: { method?: string; body?: Json;
   return payload as T;
 }
 
+/** Multipart upload (the browser sets the boundary); same error handling as `api`. */
+export async function upload<T>(path: string, form: FormData): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`/api/v1${path}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { Accept: "application/json", "X-Requested-With": "kivi-ui" },
+      body: form,
+    });
+  } catch {
+    throw new ApiError(0, "network", "Network error");
+  }
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    if (!payload || typeof payload.code !== "string") {
+      throw new ApiError(response.status, response.status === 413 ? "file_too_large" : "network", response.statusText);
+    }
+    throw new ApiError(response.status, payload.code, payload.message, payload.detail);
+  }
+  return payload as T;
+}
+
 /** Translate an error into a message key, honouring per-field validation errors. */
 export function errorMessage(error: unknown, t: (key: string, vars?: Record<string, string | number>) => string): string {
   if (error instanceof ApiError) {

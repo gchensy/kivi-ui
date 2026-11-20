@@ -2,7 +2,6 @@
 
 import {
   RiAddLine,
-  RiCheckLine,
   RiKey2Line,
   RiMore2Fill,
   RiSearchLine,
@@ -25,6 +24,7 @@ import { Select, SelectItem } from "@/components/base/select/select";
 import { PageHeader } from "@/components/kivi/app-shell";
 import { FormError } from "@/components/kivi/form-error";
 import { Modal } from "@/components/kivi/modal";
+import { Notice } from "@/components/kivi/notice";
 import { ErrorState, Skeleton } from "@/components/kivi/states";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import { initials } from "@/lib/format";
@@ -36,21 +36,6 @@ const SIZE = 10;
 type Filter = "all" | UserStatus;
 
 const STATUS_CHIP: Record<UserStatus, "yellow" | "lime" | "neutral"> = { pending: "yellow", active: "lime", disabled: "neutral" };
-
-function Notice({ text, onDone }: { text: string | null; onDone: () => void }) {
-  useEffect(() => {
-    if (!text) return;
-    const timer = window.setTimeout(onDone, 3200);
-    return () => window.clearTimeout(timer);
-  }, [text, onDone]);
-  if (!text) return null;
-  return (
-    <div role="status" className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full bg-background-inverse-default px-4 py-2 text-body-2-medium text-text-inverse shadow-xl">
-      <RiCheckLine className="size-4" aria-hidden />
-      {text}
-    </div>
-  );
-}
 
 function CreateUserModal({ isOpen, onClose, onCreated }: { isOpen: boolean; onClose: () => void; onCreated: (user: User) => void }) {
   const { t } = useI18n();

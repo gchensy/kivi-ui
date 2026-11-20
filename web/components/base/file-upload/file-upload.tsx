@@ -38,6 +38,18 @@ export interface FileUploadProps {
   /** Overrides the icon shown while a file uploads. */
   renderFileIcon?: (file: File) => ReactNode;
   className?: string;
+  /** kivi-ui: translated copy; English is used for any label left out. */
+  labels?: Partial<FileUploadLabels>;
+}
+
+export interface FileUploadLabels {
+  prompt: string;
+  select: string;
+  max: string;
+  uploading: string;
+  uploaded: string;
+  unsupported: string;
+  tooLarge: string;
 }
 
 export function formatFileSize(bytes: number) {
@@ -122,6 +134,7 @@ export function FileUpload({
   maxBytes = DEFAULT_MAX_BYTES,
   renderFileIcon,
   className,
+  labels,
 }: FileUploadProps) {
   const localize = useTemplateCopy();
   const [phase, setPhase] = useState<UploadPhase>("idle");
@@ -154,12 +167,12 @@ export function FileUpload({
   const startUpload = (nextFile: File) => {
     const extension = extensionFor(nextFile.name);
     if (!allowedExtensions.map((value) => value.toLowerCase()).includes(extension)) {
-      setRejection(`Only ${allowedExtensions.map((value) => value.toUpperCase()).join(", ")} files are supported`);
+      setRejection(labels?.unsupported ?? `Only ${allowedExtensions.map((value) => value.toUpperCase()).join(", ")} files are supported`);
       timers.current.push(setTimeout(() => setRejection(null), 2600));
       return;
     }
     if (nextFile.size > maxBytes) {
-      setRejection(`That file is larger than ${formatFileSize(maxBytes)}`);
+      setRejection(labels?.tooLarge ?? `That file is larger than ${formatFileSize(maxBytes)}`);
       timers.current.push(setTimeout(() => setRejection(null), 2600));
       return;
     }
@@ -323,12 +336,12 @@ export function FileUpload({
           >
             {rejection ?? (
               <>
-                Drag and drop to upload or <span className="text-accent-500">select</span>
+                {labels?.prompt ?? "Drag and drop to upload or"} <span className="text-accent-500">{labels?.select ?? "select"}</span>
               </>
             )}
           </p>
           <p className="t-stagger-line t-stagger-line--3 text-body-2-regular text-text-tertiary">
-            {allowedLabel} (max {formatFileSize(maxBytes)})
+            {allowedLabel} ({labels?.max ?? "max"} {formatFileSize(maxBytes)})
           </p>
         </div>
       </div>
@@ -353,7 +366,7 @@ export function FileUpload({
               staggerLine(uploadingLine),
             )}
           >
-            Uploading {file ? formatFileSize(file.size) : ""}
+            {labels?.uploading ?? "Uploading"} {file ? formatFileSize(file.size) : ""}
             ...
           </p>
           <p
@@ -362,7 +375,7 @@ export function FileUpload({
               staggerLine(completeLine),
             )}
           >
-            Uploaded successfully!
+            {labels?.uploaded ?? "Uploaded successfully!"}
           </p>
         </div>
       </div>

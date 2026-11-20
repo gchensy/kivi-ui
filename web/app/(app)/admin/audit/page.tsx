@@ -13,10 +13,16 @@ import { useI18n } from "@/lib/i18n/provider";
 import type { AuditLog, AuditPage } from "@/lib/types";
 
 const SIZE = 20;
-type Filter = "" | "auth." | "user.";
+type Filter = "" | "auth." | "user." | "dataset.,indicator.,scheme.";
 
 function describe(log: AuditLog, i18n: ReturnType<typeof useI18n>): string {
-  const d = log.detail as { username?: string; role?: string; changes?: Record<string, [string, string]>; fields?: string[] };
+  const d = log.detail as {
+    username?: string; role?: string; changes?: Record<string, [string, string]>; fields?: string[];
+    name?: string; code?: string; scheme?: string; rows?: number; count?: number; iv?: number;
+  };
+  if (d.scheme) return `${d.code ?? ""} · ${d.scheme}${d.iv !== undefined ? ` · IV ${i18n.num(d.iv, { maximumFractionDigits: 3 })}` : ""}`;
+  if (d.count !== undefined) return `${d.name ?? ""} · ${d.count}`;
+  if (d.rows !== undefined) return `${d.name ?? ""} · ${i18n.num(d.rows)}`;
   if (d.changes) {
     return Object.entries(d.changes)
       .map(([key, [before, after]]) => {
@@ -66,6 +72,7 @@ export default function AuditPage() {
           <SegmentedControlItem id="all">{t("audit.filterAll")}</SegmentedControlItem>
           <SegmentedControlItem id="auth.">{t("audit.filterAuth")}</SegmentedControlItem>
           <SegmentedControlItem id="user.">{t("audit.filterUser")}</SegmentedControlItem>
+          <SegmentedControlItem id="dataset.,indicator.,scheme.">{t("audit.filterData")}</SegmentedControlItem>
         </SegmentedControl>
         <div className="overflow-x-auto rounded-xl bg-background-primary-default">
           {!data ? (
@@ -85,7 +92,8 @@ export default function AuditPage() {
               <tbody>
                 {data.items.map((log) => {
                   const failed = log.action.endsWith("failed");
-                  const target = (log.detail as { username?: string }).username;
+                  const detail = log.detail as { username?: string; name?: string; code?: string };
+                  const target = detail.username ?? detail.code ?? detail.name;
                   return (
                     <tr key={log.id}>
                       <td className="whitespace-nowrap text-text-secondary tabular-nums">{i18n.date(log.created_at, { dateStyle: "short", timeStyle: "medium" })}</td>

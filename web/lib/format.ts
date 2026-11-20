@@ -1,5 +1,5 @@
 import type { I18n } from "./i18n/provider";
-import type { Bin, ScorecardBin, Unit } from "./types";
+import type { Bin, RuleBin, ScorecardBin, Unit } from "./types";
 
 /** Format a bin bound in its unit: ratios as percentages, money compactly, counts as integers. */
 export function formatBound(value: number, unit: Unit, i18n: I18n): string {
@@ -16,9 +16,14 @@ export function formatBound(value: number, unit: Unit, i18n: I18n): string {
 }
 
 /** Human label for a bin: interval bounds are (lower, upper], categories use their name. */
-export function binLabel(bin: Bin | ScorecardBin, unit: Unit, i18n: I18n): string {
-  if (bin.label) return i18n.pick(bin.label);
-  if (bin.missing) return i18n.t("indicators.missing");
+export function binLabel(bin: Bin | ScorecardBin | Partial<RuleBin>, unit: Unit, i18n: I18n): string {
+  const kind = "kind" in bin ? bin.kind : undefined;
+  if ("label" in bin && bin.label) return i18n.pick(bin.label);
+  if (kind === "missing" || ("missing" in bin && bin.missing)) return i18n.t("indicators.missing");
+  if (kind === "other") return i18n.t("ind.other");
+  const value = "value" in bin ? bin.value : undefined;
+  if (kind === "category") return String(value ?? "");
+  if (kind === "special") return `${i18n.t("ind.specialValue")} ${value}`;
   const { lower, upper } = bin;
   if (unit === "count") {
     // Integer counts read better as inclusive ranges: (0, 2] → 1–2.

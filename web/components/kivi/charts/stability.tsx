@@ -39,7 +39,7 @@ import {
 
 type Thresholds = { warn: number; alert: number };
 
-function referenceShade(monthly: Monthly[], label: string) {
+function referenceShade(monthly: { month: string; in_reference: boolean }[], label: string) {
   const reference = monthly.filter((m) => m.in_reference);
   if (!reference.length) return null;
   return (
@@ -54,15 +54,24 @@ function referenceShade(monthly: Monthly[], label: string) {
 }
 
 export function PsiTrendChart({ monthly, thresholds }: { monthly: Monthly[]; thresholds: Thresholds }) {
+  return <PsiBars data={monthly.map((m) => ({ month: m.month, psi: m.score_psi, in_reference: m.in_reference }))} thresholds={thresholds} />;
+}
+
+type PsiPoint = { month: string; psi: number; in_reference: boolean; rows?: number };
+
+/** Monthly PSI bars coloured by status, with threshold lines and the reference period shaded. */
+export function PsiBars({ data, thresholds, referenceLabel }: { data: PsiPoint[]; thresholds: Thresholds; referenceLabel?: string }) {
   const i18n = useI18n();
+  const monthly = data;
+  const reference = referenceLabel ?? i18n.t("stability.reference");
   const step = 0.05;
-  const top = Math.ceil(Math.max(thresholds.alert * 1.2, ...monthly.map((m) => m.score_psi)) / step) * step;
+  const top = Math.ceil(Math.max(thresholds.alert * 1.2, ...monthly.map((m) => m.psi)) / step) * step;
   const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => Math.round(i * step * 100) / 100);
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={monthly} margin={{ top: 20, right: 40, bottom: 0, left: 0 }}>
         <CartesianGrid {...GRID} />
-        {referenceShade(monthly, i18n.t("stability.reference"))}
+        {referenceShade(monthly, reference)}
         <XAxis dataKey="month" tickFormatter={(m) => i18n.month(m)} tick={AXIS_TICK} axisLine={AXIS_LINE} tickLine={false} tickMargin={8} />
         <YAxis width={44} domain={[0, top]} ticks={ticks} tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => i18n.num(v, { maximumFractionDigits: 2 })} />
         {(["warn", "alert"] as const).map((k) => (
@@ -76,25 +85,26 @@ export function PsiTrendChart({ monthly, thresholds }: { monthly: Monthly[]; thr
         ))}
         <Tooltip
           cursor={CURSOR_BAND}
-          content={(props: TipProps<Monthly>) => {
+          content={(props: TipProps<PsiPoint>) => {
             const d = tipDatum(props);
             if (!d) return null;
-            const level = levelOf(d.score_psi, thresholds.warn, thresholds.alert);
+            const level = levelOf(d.psi, thresholds.warn, thresholds.alert);
             return (
               <TooltipCard
                 title={i18n.month(d.month, true)}
                 rows={[
-                  { label: "PSI", value: i18n.num(d.score_psi, { minimumFractionDigits: 3, maximumFractionDigits: 3 }), color: STATUS_COLOR[level], shape: "rect" },
+                  { label: "PSI", value: i18n.num(d.psi, { minimumFractionDigits: 3, maximumFractionDigits: 3 }), color: STATUS_COLOR[level], shape: "rect" },
                   { label: i18n.t("stability.level"), value: i18n.t(`alerts.${level}`) },
+                  ...(d.rows !== undefined ? [{ label: i18n.t("data.rows"), value: i18n.num(d.rows) }] : []),
                 ]}
-                footer={d.in_reference ? i18n.t("stability.reference") : i18n.t("stability.monitoring")}
+                footer={d.in_reference ? reference : i18n.t("stability.monitoring")}
               />
             );
           }}
         />
-        <Bar dataKey="score_psi" maxBarSize={BAR_MAX} radius={BAR_RADIUS} {...ANIMATION}>
+        <Bar dataKey="psi" maxBarSize={BAR_MAX} radius={BAR_RADIUS} {...ANIMATION}>
           {monthly.map((m) => (
-            <Cell key={m.month} fill={STATUS_COLOR[levelOf(m.score_psi, thresholds.warn, thresholds.alert)]} />
+            <Cell key={m.month} fill={STATUS_COLOR[levelOf(m.psi, thresholds.warn, thresholds.alert)]} />
           ))}
         </Bar>
       </BarChart>

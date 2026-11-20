@@ -19,7 +19,7 @@ import {
 
 import { Tooltip as HoverTip, TooltipTrigger } from "@/components/base/tooltip/tooltip";
 import { useI18n } from "@/lib/i18n/provider";
-import type { Analytics, Monthly } from "@/lib/types";
+
 
 import { levelOf, STATUS_COLOR } from "../status";
 import {
@@ -38,6 +38,9 @@ import {
 } from "./kit";
 
 type Thresholds = { warn: number; alert: number };
+type MonthPoint = { month: string; in_reference: boolean };
+type DiscriminationPoint = MonthPoint & { auc: number | null; ks: number | null };
+type FeatureRow = { name: string; label: { zh: string; en: string }; values: (number | null)[] };
 
 function referenceShade(monthly: { month: string; in_reference: boolean }[], label: string) {
   const reference = monthly.filter((m) => m.in_reference);
@@ -53,11 +56,16 @@ function referenceShade(monthly: { month: string; in_reference: boolean }[], lab
   );
 }
 
-export function PsiTrendChart({ monthly, thresholds }: { monthly: Monthly[]; thresholds: Thresholds }) {
-  return <PsiBars data={monthly.map((m) => ({ month: m.month, psi: m.score_psi, in_reference: m.in_reference }))} thresholds={thresholds} />;
+export function PsiTrendChart({ monthly, thresholds }: { monthly: (MonthPoint & { score_psi: number | null; rows?: number | null })[]; thresholds: Thresholds }) {
+  return (
+    <PsiBars
+      data={monthly.map((m) => ({ month: m.month, psi: m.score_psi, in_reference: m.in_reference, rows: m.rows ?? undefined }))}
+      thresholds={thresholds}
+    />
+  );
 }
 
-type PsiPoint = { month: string; psi: number; in_reference: boolean; rows?: number };
+type PsiPoint = { month: string; psi: number | null; in_reference: boolean; rows?: number };
 
 /** Monthly PSI bars coloured by status, with threshold lines and the reference period shaded. */
 export function PsiBars({ data, thresholds, referenceLabel }: { data: PsiPoint[]; thresholds: Thresholds; referenceLabel?: string }) {
@@ -65,7 +73,7 @@ export function PsiBars({ data, thresholds, referenceLabel }: { data: PsiPoint[]
   const monthly = data;
   const reference = referenceLabel ?? i18n.t("stability.reference");
   const step = 0.05;
-  const top = Math.ceil(Math.max(thresholds.alert * 1.2, ...monthly.map((m) => m.psi)) / step) * step;
+  const top = Math.ceil(Math.max(thresholds.alert * 1.2, ...monthly.map((m) => m.psi ?? 0)) / step) * step;
   const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => Math.round(i * step * 100) / 100);
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -88,7 +96,7 @@ export function PsiBars({ data, thresholds, referenceLabel }: { data: PsiPoint[]
           content={(props: TipProps<PsiPoint>) => {
             const d = tipDatum(props);
             if (!d) return null;
-            const level = levelOf(d.psi, thresholds.warn, thresholds.alert);
+            const level = levelOf(d.psi ?? 0, thresholds.warn, thresholds.alert);
             return (
               <TooltipCard
                 title={i18n.month(d.month, true)}
@@ -104,7 +112,7 @@ export function PsiBars({ data, thresholds, referenceLabel }: { data: PsiPoint[]
         />
         <Bar dataKey="psi" maxBarSize={BAR_MAX} radius={BAR_RADIUS} {...ANIMATION}>
           {monthly.map((m) => (
-            <Cell key={m.month} fill={STATUS_COLOR[levelOf(m.psi, thresholds.warn, thresholds.alert)]} />
+            <Cell key={m.month} fill={STATUS_COLOR[levelOf(m.psi ?? 0, thresholds.warn, thresholds.alert)]} />
           ))}
         </Bar>
       </BarChart>
@@ -112,7 +120,7 @@ export function PsiBars({ data, thresholds, referenceLabel }: { data: PsiPoint[]
   );
 }
 
-export function DiscriminationChart({ monthly }: { monthly: Monthly[] }) {
+export function DiscriminationChart({ monthly }: { monthly: DiscriminationPoint[] }) {
   const i18n = useI18n();
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -123,7 +131,7 @@ export function DiscriminationChart({ monthly }: { monthly: Monthly[] }) {
         <YAxis width={44} domain={[0, 1]} ticks={[0, 0.25, 0.5, 0.75, 1]} tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => i18n.num(v, { maximumFractionDigits: 2 })} />
         <Tooltip
           cursor={CURSOR_LINE}
-          content={(props: TipProps<Monthly>) => {
+          content={(props: TipProps<DiscriminationPoint>) => {
             const d = tipDatum(props);
             if (!d) return null;
             return (
@@ -137,8 +145,8 @@ export function DiscriminationChart({ monthly }: { monthly: Monthly[] }) {
             );
           }}
         />
-        <Line type="monotone" dataKey="auc" stroke="var(--viz-1)" strokeWidth={2} dot={false} activeDot={<RingDot color="var(--viz-1)" />} {...ANIMATION} />
-        <Line type="monotone" dataKey="ks" stroke="var(--viz-2)" strokeWidth={2} dot={false} activeDot={<RingDot color="var(--viz-2)" />} {...ANIMATION} />
+        <Line type="monotone" dataKey="auc" connectNulls stroke="var(--viz-1)" strokeWidth={2} dot={false} activeDot={<RingDot color="var(--viz-1)" />} {...ANIMATION} />
+        <Line type="monotone" dataKey="ks" connectNulls stroke="var(--viz-2)" strokeWidth={2} dot={false} activeDot={<RingDot color="var(--viz-2)" />} {...ANIMATION} />
       </LineChart>
     </ResponsiveContainer>
   );
@@ -159,9 +167,9 @@ export function PsiHeatmap({
   monthly,
   thresholds,
 }: {
-  features: Analytics["stability"]["feature_psi"];
+  features: FeatureRow[];
   months: string[];
-  monthly: Monthly[];
+  monthly: { in_reference: boolean }[];
   thresholds: Thresholds;
 }) {
   const i18n = useI18n();

@@ -1,6 +1,6 @@
 "use client";
 
-import { RiCheckLine, RiRefreshLine } from "@remixicon/react";
+import { RiCheckLine } from "@remixicon/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 
@@ -13,8 +13,8 @@ import { LocaleToggle } from "@/components/kivi/locale-toggle";
 import { Panel } from "@/components/kivi/panel";
 import { api, errorMessage } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/provider";
-import { meKey, useAnalytics, useMe } from "@/lib/queries";
-import type { Analytics, User } from "@/lib/types";
+import { meKey, useMe } from "@/lib/queries";
+import type { User } from "@/lib/types";
 
 function Saved({ show, text }: { show: boolean; text: string }) {
   if (!show) return null;
@@ -31,10 +31,9 @@ export default function SettingsPage() {
   const { t } = i18n;
   const client = useQueryClient();
   const me = useMe();
-  const analytics = useAnalytics();
   const [profileError, setProfileError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [saved, setSaved] = useState<"profile" | "password" | "analytics" | null>(null);
+  const [saved, setSaved] = useState<"profile" | "password" | null>(null);
 
   const profile = useMutation({
     mutationFn: (body: Record<string, string>) => api<User>("/auth/me", { method: "PATCH", body }),
@@ -52,13 +51,6 @@ export default function SettingsPage() {
       setSaved("password");
     },
     onError: (err) => setPasswordError(errorMessage(err, t)),
-  });
-  const rebuild = useMutation({
-    mutationFn: () => api<Analytics>("/analytics/demo/rebuild", { method: "POST" }),
-    onSuccess: (payload) => {
-      client.setQueryData(["analytics", "demo"], payload);
-      setSaved("analytics");
-    },
   });
 
   if (!me.data) return null;
@@ -132,21 +124,6 @@ export default function SettingsPage() {
           </div>
         </Panel>
 
-        {user.role === "admin" && (
-          <Panel title={t("settings.analytics")} description={t("settings.analyticsDesc")}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-body-2-regular text-text-secondary">
-                {analytics.data && t("settings.generatedAt", { time: i18n.date(analytics.data.meta.generated_at) })}
-              </span>
-              <div className="flex items-center gap-3">
-                <Saved show={saved === "analytics"} text={t("settings.rebuilt")} />
-                <Button variant="secondary" leadingIcon={RiRefreshLine} disabled={rebuild.isPending} onClick={() => rebuild.mutate()}>
-                  {rebuild.isPending ? t("settings.rebuilding") : t("settings.rebuild")}
-                </Button>
-              </div>
-            </div>
-          </Panel>
-        )}
       </div>
     </>
   );

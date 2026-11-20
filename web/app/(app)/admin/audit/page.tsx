@@ -13,7 +13,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import type { AuditLog, AuditPage } from "@/lib/types";
 
 const SIZE = 20;
-type Filter = "" | "auth." | "user." | "dataset.,indicator.,scheme." | "model.,version." | "strategy,list.,token.";
+type Filter = "" | "auth." | "user." | "dataset.,indicator.,scheme." | "model.,version." | "strategy,list.,token." | "monitor.,alert.";
 
 function describe(log: AuditLog, i18n: ReturnType<typeof useI18n>): string {
   const d = log.detail as {
@@ -76,6 +76,7 @@ export default function AuditPage() {
           <SegmentedControlItem id="dataset.,indicator.,scheme.">{t("audit.filterData")}</SegmentedControlItem>
           <SegmentedControlItem id="model.,version.">{t("audit.filterModel")}</SegmentedControlItem>
           <SegmentedControlItem id="strategy,list.,token.">{t("audit.filterStrategy")}</SegmentedControlItem>
+          <SegmentedControlItem id="monitor.,alert.">{t("audit.filterMonitor")}</SegmentedControlItem>
         </SegmentedControl>
         <div className="overflow-x-auto rounded-xl bg-background-primary-default">
           {!data ? (

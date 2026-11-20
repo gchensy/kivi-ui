@@ -1,0 +1,43 @@
+"""Application settings, read from environment variables prefixed ``KIVI_``."""
+
+from functools import lru_cache
+from typing import Literal
+
+from pydantic import Field, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEV_SECRET = "dev-only-insecure-secret-change-me"
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="KIVI_", env_file=".env", extra="ignore")
+
+    env: Literal["development", "test", "production"] = "development"
+    database_url: str = "postgresql+psycopg://kivi:kivi@127.0.0.1:5433/kivi"
+
+    secret_key: str = DEV_SECRET
+    session_hours: int = Field(8, ge=1, le=72)
+    cookie_name: str = "kivi_session"
+    cookie_secure: bool = False
+
+    signup_mode: Literal["approval", "open", "closed"] = "approval"
+    require_four_eyes: bool = True
+    max_failed_logins: int = Field(5, ge=1)
+    lockout_minutes: int = Field(15, ge=1)
+
+    # Used only by `kivi-ui seed-demo` to create the demonstration accounts.
+    demo_password: str | None = None
+
+    @model_validator(mode="after")
+    def _production_secret(self) -> "Settings":
+        if self.env == "production":
+            if self.secret_key == DEV_SECRET or len(self.secret_key) < 32:
+                raise ValueError("KIVI_SECRET_KEY must be set to at least 32 characters in production")
+            if not self.cookie_secure:
+                raise ValueError("KIVI_COOKIE_SECURE must be true in production")
+        return self
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

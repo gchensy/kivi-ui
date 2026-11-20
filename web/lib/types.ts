@@ -127,21 +127,6 @@ export interface Monthly {
   approval_rate: number;
 }
 
-export interface Alert {
-  id: string;
-  kind: "feature_psi" | "score_psi" | "ks_drop" | "approval_shift";
-  level: Level;
-  value: number;
-  subject?: string;
-  subject_label?: Bilingual;
-  threshold?: number;
-  month?: string;
-  train?: number;
-  oot?: number;
-  current?: number;
-  previous?: number;
-}
-
 export interface DailyDecision {
   date: string;
   pass: number;
@@ -151,71 +136,13 @@ export interface DailyDecision {
   approval_rate: number | null;
 }
 
-export interface Analytics {
-  meta: {
-    generated_at: string;
-    as_of: string;
-    engine: string;
-    sample: {
-      rows: number;
-      bad_rate: number;
-      months: string[];
-      train_rows: number;
-      oot_rows: number;
-      train_months: [string, string];
-      oot_months: [string, string];
-      features: number;
-    };
-  };
-  kpis: {
-    applications_30d: number;
-    applications_prev_30d: number;
-    approval_rate_30d: number;
-    approval_rate_prev_30d: number;
-    review_rate_30d: number;
-    reject_rate_30d: number;
-    auc_oot: number;
-    auc_train: number;
-    ks_oot: number;
-    ks_train: number;
-    score_psi_latest: number;
-    score_psi_oot: number;
-    alerts: { alert: number; warn: number };
-  };
-  decisions: {
-    daily: DailyDecision[];
-    rules: { code: string; label: Bilingual; decision: Decision; hits: number; hit_rate: number; exclusive: number }[];
-    effect: Record<Decision, number>;
-    current: DailyDecision;
-    previous: DailyDecision;
-  };
-  indicators: Indicator[];
-  model: {
-    code: string;
-    name: Bilingual;
-    version: string;
-    features: string[];
-    intercept: number;
-    scale: { base_score: number; base_odds: number; pdo: number };
-    scorecard: {
-      name: string;
-      label: Bilingual;
-      unit: Unit;
-      kind: "numeric" | "category";
-      coefficient: number;
-      bins: ScorecardBin[];
-    }[];
-    roc: { train: Roc; oot: Roc };
-    bands: { train: Band[]; oot: Band[] };
-    gains: Gain[];
-    score_stats: { min: number; max: number; mean: number };
-  };
-  stability: {
-    thresholds: { warn: number; alert: number };
-    monthly: Monthly[];
-    feature_psi: { name: string; label: Bilingual; values: (number | null)[] }[];
-  };
-  alerts: Alert[];
+export interface RuleHit {
+  code: string;
+  label: Bilingual;
+  decision: Decision;
+  hits: number;
+  hit_rate: number | null;
+  exclusive: number;
 }
 
 // ---- P2: datasets and indicators ------------------------------------------------------------
@@ -720,4 +647,228 @@ export interface DecisionRow {
 export interface DecisionDetail extends DecisionRow {
   trace: TraceRule[];
   input: Record<string, unknown>;
+}
+
+// ---- P5: monitors, alerts, overview ----------------------------------------------------------
+
+export type MonitorKind = "indicator_psi" | "score_psi" | "model_ks" | "approval_rate" | "rule_hit_rate";
+export type MonitorLevel = "normal" | "warn" | "alert" | "error";
+export type AlertStatus = "open" | "acknowledged" | "resolved";
+export type Freq = "hourly" | "daily" | "weekly" | "manual";
+
+export interface Schedule {
+  freq: Freq;
+  hour: number;
+  minute: number;
+  weekday: number;
+}
+
+export interface CodeRef {
+  id: string;
+  code: string;
+  name: string;
+  name_en: string | null;
+}
+
+export interface SeriesPoint {
+  period: string;
+  value: number | null;
+  rows?: number;
+  in_reference?: boolean;
+  auc?: number | null;
+  ks?: number | null;
+  labelled?: number;
+  bad_rate?: number | null;
+  mean_score?: number | null;
+  pass?: number;
+  review?: number;
+  reject?: number;
+}
+
+export interface Worst {
+  code: string;
+  name: string;
+  name_en: string | null;
+  value: number | null;
+  decision?: Decision;
+}
+
+export interface WindowCounts {
+  pass: number;
+  review: number;
+  reject: number;
+  total: number;
+  rate: number | null;
+}
+
+export interface RunFacts {
+  code?: string;
+  period?: string;
+  reference?: [string, string];
+  series?: SeriesPoint[];
+  model?: { code: string; version: number };
+  strategy?: { code: string; version?: number };
+  worst?: Worst;
+  indicators?: { code: string; name: string; name_en: string | null; values: (number | null)[]; latest: number | null }[];
+  skipped?: { code: string; name: string; name_en: string | null; reason: "missing_column" | "no_scheme" }[];
+  reference_metrics?: { auc: number | null; ks: number | null; labelled: number };
+  auc?: number | null;
+  ks?: number | null;
+  window_days?: number;
+  baseline_days?: number;
+  current?: WindowCounts;
+  baseline?: WindowCounts;
+  current_total?: number;
+  baseline_total?: number;
+  rules?: { code: string; name: string; name_en: string | null; decision: Decision; current: number; baseline: number; shift: number }[];
+  [key: string]: unknown;
+}
+
+export interface MonitorRun {
+  id: number;
+  trigger: "schedule" | "manual" | "seed";
+  status: "done" | "failed";
+  level: MonitorLevel;
+  value: number | null;
+  error: string | null;
+  code?: string | null;
+  seconds: number;
+  created_at: string;
+}
+
+export interface MonitorRunDetail extends MonitorRun {
+  detail: RunFacts;
+}
+
+export interface MonitorParams {
+  indicator_ids?: string[];
+  reference?: { start: string; end: string };
+  window_days?: number;
+  baseline_days?: number;
+  min_requests?: number;
+}
+
+export interface MonitorItem {
+  id: string;
+  name: string;
+  kind: MonitorKind;
+  model: CodeRef | null;
+  strategy: CodeRef | null;
+  dataset: { id: string; name: string } | null;
+  params: MonitorParams;
+  thresholds: { warn: number; alert: number };
+  schedule: Schedule;
+  enabled: boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_level: MonitorLevel | null;
+  last_value: number | null;
+  owner: Person | null;
+  created_at: string;
+  updated_at: string;
+  trend: (number | null)[];
+  alert: { id: number; status: AlertStatus; level: MonitorLevel } | null;
+}
+
+export interface MonitorDetail extends MonitorItem {
+  latest: MonitorRunDetail | null;
+  runs: MonitorRun[];
+}
+
+export interface AlertEvent {
+  action: "opened" | "escalated" | "eased" | "acknowledged" | "resolved" | "recovered";
+  at: string;
+  level?: MonitorLevel;
+  value?: number | null;
+  note?: string;
+  actor?: { id: string; display_name: string };
+}
+
+export interface AlertItem {
+  id: number;
+  monitor: { id: string; name: string; kind: MonitorKind; model: CodeRef | null; strategy: CodeRef | null; thresholds: { warn: number; alert: number } };
+  run_id: number | null;
+  status: AlertStatus;
+  level: MonitorLevel;
+  peak_level: MonitorLevel;
+  value: number | null;
+  threshold: number | null;
+  detail: RunFacts;
+  occurrences: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  assignee: Person | null;
+  acknowledged_at: string | null;
+  resolver: Person | null;
+  resolved_at: string | null;
+  resolution: "manual" | "recovered" | null;
+  note: string;
+  events: AlertEvent[];
+}
+
+export type AlertCounts = Record<AlertStatus | "warn" | "alert", number>;
+
+export interface AlertPage {
+  items: AlertItem[];
+  total: number;
+  counts: AlertCounts;
+}
+
+type Counts = Omit<DailyDecision, "date">;
+
+export interface Overview {
+  as_of: string;
+  generated_at: string;
+  timezone: string;
+  decisions: { current: Counts; previous: Counts; daily: DailyDecision[]; sources: Record<string, number> };
+  strategy: {
+    id: string;
+    code: string;
+    name: Bilingual;
+    version: number;
+    version_id: string;
+    decisions: Counts;
+    rules: RuleHit[];
+    effect: Record<Decision, number | null> | null;
+    effect_dataset: string | null;
+  } | null;
+  model: {
+    id: string;
+    code: string;
+    name: Bilingual;
+    version: number;
+    version_id: string;
+    focus: Split;
+    auc_train: number | null;
+    ks_train: number | null;
+    auc_focus: number | null;
+    ks_focus: number | null;
+  } | null;
+  score_psi: { monitor_id: string; value: number | null; level: MonitorLevel; period: string | null; thresholds: { warn: number; alert: number }; ran_at: string } | null;
+  alerts: { counts: AlertCounts; items: AlertItem[] };
+  monitors: MonitorItem[];
+}
+
+export interface StabilityMonth {
+  month: string;
+  score_psi: number | null;
+  auc: number | null;
+  ks: number | null;
+  rows: number | null;
+  bad_rate: number | null;
+  in_reference: boolean;
+}
+
+export interface StabilityView {
+  models: { id: string; code: string; name: Bilingual }[];
+  model: { id: string; code: string; name: Bilingual } | null;
+  thresholds?: { warn: number; alert: number };
+  ks_thresholds?: { warn: number; alert: number };
+  reference?: [string, string] | null;
+  reference_metrics?: { auc: number | null; ks: number | null; labelled: number } | null;
+  months?: string[];
+  monthly?: StabilityMonth[];
+  feature_psi?: { name: string; label: Bilingual; values: (number | null)[] }[];
+  monitors?: Partial<Record<MonitorKind, { id: string; name: string; level: MonitorLevel | null; value: number | null; ran_at: string | null }>>;
+  alerts?: AlertItem[];
 }

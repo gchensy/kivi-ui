@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  RiAlarmWarningLine,
+  RiCloseLine,
   RiDashboardLine,
   RiDatabase2Line,
   RiFileList3Line,
@@ -9,10 +11,10 @@ import {
   RiKey2Line,
   RiLogoutBoxRLine,
   RiPulseLine,
+  RiRadarLine,
   RiRulerLine,
   RiSettings4Line,
   RiSideBarFill,
-  RiCloseLine,
   RiStackLine,
   RiTeamLine,
   RiUserForbidLine,
@@ -50,7 +52,7 @@ interface NavGroup {
   adminOnly?: boolean;
 }
 
-export function navGroups(pendingUsers?: number): NavGroup[] {
+export function navGroups(pendingUsers?: number, activeAlerts?: number): NavGroup[] {
   return [
     { key: "", items: [{ href: "/", key: "overview", icon: RiDashboardLine }] },
     {
@@ -65,6 +67,8 @@ export function navGroups(pendingUsers?: number): NavGroup[] {
       items: [
         { href: "/models", key: "models", icon: RiStackLine },
         { href: "/stability", key: "stability", icon: RiPulseLine },
+        { href: "/monitors", key: "monitors", icon: RiRadarLine },
+        { href: "/alerts", key: "alerts", icon: RiAlarmWarningLine, badge: activeAlerts || undefined },
       ],
     },
     {
@@ -183,12 +187,14 @@ function UserMenu({ user, collapsed }: { user: User; collapsed: boolean }) {
 export function Sidebar({
   user,
   pendingUsers,
+  activeAlerts,
   mobile = false,
   onClose,
   className,
 }: {
   user: User;
   pendingUsers?: number;
+  activeAlerts?: number;
   mobile?: boolean;
   onClose?: () => void;
   className?: string;
@@ -197,7 +203,7 @@ export function Sidebar({
   const pathname = usePathname() ?? "/";
   const [collapsedState, setCollapsed] = useState(false);
   const collapsed = mobile ? false : collapsedState;
-  const groups = navGroups(pendingUsers).filter((g) => !g.adminOnly || user.role === "admin");
+  const groups = navGroups(pendingUsers, activeAlerts).filter((g) => !g.adminOnly || user.role === "admin");
 
   return (
     <aside

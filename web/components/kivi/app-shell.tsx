@@ -8,7 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { IconButton } from "@/components/base/buttons/icon-button";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/provider";
-import { useMe } from "@/lib/queries";
+import { useAlertCounts, useMe } from "@/lib/queries";
 import type { UserPage } from "@/lib/types";
 
 import { KiviMark } from "./logo";
@@ -28,6 +28,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
     enabled: isAdmin,
     staleTime: 30_000,
   });
+  const alertCounts = useAlertCounts(!!me.data);
 
   useEffect(() => {
     if (me.error instanceof ApiError && me.error.status === 401) {
@@ -44,14 +45,15 @@ export function AppFrame({ children }: { children: ReactNode }) {
   }
 
   const pendingCount = pending.data?.counts.pending;
+  const activeAlerts = alertCounts.data ? alertCounts.data.open + alertCounts.data.acknowledged : undefined;
   return (
     <div className="relative flex h-dvh w-full gap-4 overflow-hidden bg-background-full p-3">
-      <Sidebar user={me.data} pendingUsers={pendingCount} className="hidden lg:flex" />
+      <Sidebar user={me.data} pendingUsers={pendingCount} activeAlerts={activeAlerts} className="hidden lg:flex" />
       {navOpen && (
         <div className="fixed inset-0 z-50 flex lg:hidden">
           <button type="button" aria-label={t("nav.closeNav")} onClick={() => setNavOpen(false)} className="absolute inset-0 cursor-pointer bg-black/40" />
           <div className="relative flex h-full p-3">
-            <Sidebar user={me.data} pendingUsers={pendingCount} mobile onClose={() => setNavOpen(false)} className="flex" />
+            <Sidebar user={me.data} pendingUsers={pendingCount} activeAlerts={activeAlerts} mobile onClose={() => setNavOpen(false)} className="flex" />
           </div>
         </div>
       )}

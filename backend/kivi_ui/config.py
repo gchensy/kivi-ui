@@ -28,11 +28,24 @@ class Settings(BaseSettings):
     # HMAC key for watchlist values; defaults to the secret key. Changing it makes stored lists unmatchable.
     list_key: str | None = None
 
-    # Run the background job worker inside the API process (training, batch scoring).
+    # Run the background job worker inside the API process (training, batch scoring, monitor schedules).
     run_worker: bool = True
+
+    # Time zone in which monitor schedules ("daily at 06:00") are read.
+    timezone: str = "America/Los_Angeles"
 
     # Used only by `kivi-ui seed-demo` to create the demonstration accounts.
     demo_password: str | None = None
+
+    @model_validator(mode="after")
+    def _known_timezone(self) -> "Settings":
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError) as error:
+            raise ValueError(f"KIVI_TIMEZONE is not a known time zone: {self.timezone}") from error
+        return self
 
     @model_validator(mode="after")
     def _production_secret(self) -> "Settings":

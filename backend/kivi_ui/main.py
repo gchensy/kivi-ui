@@ -9,8 +9,8 @@ from . import __version__, model_jobs  # noqa: F401  (registers job handlers)
 from .config import get_settings
 from .errors import install_error_handlers
 from .jobs import Worker
+from .monitoring import service as _monitoring  # noqa: F401  (registers the schedule tick)
 from .routes import (
-    analytics,
     audit_logs,
     auth,
     datasets,
@@ -18,6 +18,8 @@ from .routes import (
     indicators,
     lists,
     models,
+    monitors,
+    overview,
     strategies,
     users,
 )
@@ -68,13 +70,14 @@ def create_app() -> FastAPI:
         auth,
         users,
         audit_logs,
-        analytics,
+        overview,
         datasets,
         indicators,
         models,
         strategies,
         lists,
         decisions,
+        monitors,
     ):
         api.include_router(module.router)
 

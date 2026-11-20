@@ -276,6 +276,7 @@ def seed_strategy(db: Session, admin: User | None, analyst: User | None) -> list
     import pandas as pd
 
     from .models import DecisionLog, RiskList, Strategy, StrategyReview, StrategyVersion
+    from .monitoring.schedule import zone
     from .routes.lists import add_items  # noqa: F401  (same hashing as the API)
     from .rules import runtime
     from .rules.dsl import Definition
@@ -393,6 +394,7 @@ def seed_strategy(db: Session, admin: User | None, analyst: User | None) -> list
     created.append(f"strategy {STRATEGY_CODE} v1 online, v2 draft")
 
     # Decisions for the last 30 days of applications, as if they came through the API.
+    local_zone = zone().key
     recent = frame.applied_on >= (frame.applied_on.max() - pd.Timedelta(days=29))
     rules = {r.code: r for r in d1.rules}
     logs = []
@@ -400,9 +402,11 @@ def seed_strategy(db: Session, admin: User | None, analyst: User | None) -> list
         row = frame.loc[idx]
         hit = [c for c in r1.hits.columns if bool(r1.hits.at[idx, c])]
         deciding = r1.deciding_rule.at[idx]
-        at = pd.Timestamp(row.applied_on).tz_localize("Asia/Shanghai") + pd.Timedelta(
+        at = pd.Timestamp(row.applied_on).tz_localize(local_zone) + pd.Timedelta(
             hours=int(rng.integers(8, 22)), minutes=int(rng.integers(0, 60))
         )
+        if at > now:  # today's applications arrive before now, never later today
+            at = now - pd.Timedelta(minutes=int(rng.integers(1, 180)))
         logs.append(
             DecisionLog(
                 request_id=f"demo-{row.application_id}",
@@ -466,6 +470,70 @@ def seed_strategy(db: Session, admin: User | None, analyst: User | None) -> list
     created.append(f"{len(logs)} demo decisions")
     db.commit()
     runtime.invalidate()
+    return created
+
+
+def seed_monitors(db: Session, admin: User | None, analyst: User | None) -> list[str]:
+    """Monitors on RETAIL_APP and RETAIL_APPLY, each run once so alerts and charts have data."""
+    from datetime import UTC, datetime
+
+    from .models import Alert, Monitor, RiskModel, Strategy
+    from .monitoring.checks import DEFAULT_THRESHOLDS
+    from .monitoring.schedule import next_run
+    from .monitoring.service import _event, run_monitor
+
+    model = db.scalar(select(RiskModel).where(RiskModel.code == MODEL_CODE))
+    strategy = db.scalar(select(Strategy).where(Strategy.code == STRATEGY_CODE))
+    retail = db.scalar(select(Dataset).where(Dataset.name == RETAIL))
+    if model is None or strategy is None or retail is None:
+        return []
+    if db.scalar(select(Monitor.id).where(Monitor.model_id == model.id)):
+        return []
+    owner = (analyst or admin).id if (analyst or admin) else None
+    specs = [
+        ("RETAIL_APP 分数稳定性", "score_psi", {"freq": "daily", "hour": 6, "minute": 0}),
+        ("RETAIL_APP 区分能力", "model_ks", {"freq": "daily", "hour": 6, "minute": 10}),
+        ("RETAIL_APP 入模变量稳定性", "indicator_psi", {"freq": "daily", "hour": 6, "minute": 20}),
+        ("RETAIL_APPLY 通过率", "approval_rate", {"freq": "hourly", "minute": 5}),
+        ("RETAIL_APPLY 规则命中率", "rule_hit_rate", {"freq": "daily", "hour": 7, "minute": 0}),
+    ]
+    created = []
+    for name, kind, schedule in specs:
+        on_strategy = kind in ("approval_rate", "rule_hit_rate")
+        monitor = Monitor(
+            name=name,
+            kind=kind,
+            model_id=None if on_strategy else model.id,
+            strategy_id=strategy.id if on_strategy else None,
+            dataset_id=None if on_strategy else retail.id,
+            params={"window_days": 7, "baseline_days": 30, "min_requests": 30} if on_strategy else {},
+            # The rule monitor watches 3pp moves, stricter than the 5pp default.
+            thresholds={"warn": 0.03, "alert": 0.08} if kind == "rule_hit_rate" else DEFAULT_THRESHOLDS[kind],
+            schedule={"weekday": 0, **schedule},
+            enabled=True,
+            next_run_at=next_run({"weekday": 0, **schedule}),
+            owner_id=owner,
+        )
+        db.add(monitor)
+        db.commit()
+        run = run_monitor(db, monitor, "seed")
+        created.append(f"monitor {name}: {run.level}")
+    # One alert already claimed by the analyst, to show the hand-over.
+    claimed = db.scalar(
+        select(Alert)
+        .join(Monitor, Monitor.id == Alert.monitor_id)
+        .where(Monitor.kind == "indicator_psi", Monitor.model_id == model.id, Alert.status == "open")
+    )
+    if claimed is not None and analyst is not None:
+        note = "合作渠道近三个月进件占比上升，已联系渠道运营核实。"
+        claimed.status, claimed.assignee_id, claimed.acknowledged_at = (
+            "acknowledged",
+            analyst.id,
+            datetime.now(UTC),
+        )
+        claimed.note = note
+        claimed.events = [*claimed.events, _event("acknowledged", analyst, note=note)]
+        db.commit()
     return created
 
 

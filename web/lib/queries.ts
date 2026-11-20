@@ -5,16 +5,20 @@ import { useRouter } from "next/navigation";
 
 import { api, ApiError } from "./api";
 import type {
-  Analytics,
+  AlertPage,
   Dataset,
   DatasetDetail,
   FieldOptions,
   IndicatorDetail,
   IndicatorPage,
   ModelDetail,
+  MonitorDetail,
+  MonitorItem,
+  Overview,
   RiskList,
   RiskModel,
   StrategyDetail,
+  StabilityView,
   StrategyItem,
   StrategyVersionDetail,
   User,
@@ -32,11 +36,40 @@ export function useMe() {
   });
 }
 
-export function useAnalytics() {
+export function useOverview() {
+  return useQuery({ queryKey: ["overview"], queryFn: ({ signal }) => api<Overview>("/overview", { signal }), refetchInterval: 60_000 });
+}
+
+export function useStability(modelId?: string) {
   return useQuery({
-    queryKey: ["analytics", "demo"],
-    queryFn: ({ signal }) => api<Analytics>("/analytics/demo", { signal }),
-    staleTime: 5 * 60_000,
+    queryKey: ["stability", modelId ?? ""],
+    queryFn: ({ signal }) => api<StabilityView>(`/stability${modelId ? `?model_id=${modelId}` : ""}`, { signal }),
+  });
+}
+
+export function useMonitors() {
+  return useQuery({ queryKey: ["monitors"], queryFn: ({ signal }) => api<MonitorItem[]>("/monitors", { signal }) });
+}
+
+export function useMonitor(id: string) {
+  return useQuery({ queryKey: ["monitors", id], queryFn: ({ signal }) => api<MonitorDetail>(`/monitors/${id}`, { signal }) });
+}
+
+export function useAlerts(params: URLSearchParams) {
+  return useQuery({
+    queryKey: ["alerts", params.toString()],
+    queryFn: ({ signal }) => api<AlertPage>(`/alerts?${params}`, { signal }),
+  });
+}
+
+/** Unresolved alert counts for the sidebar badge, refreshed every minute. */
+export function useAlertCounts(enabled = true) {
+  return useQuery({
+    queryKey: ["alerts", "counts"],
+    queryFn: ({ signal }) => api<AlertPage>("/alerts?status=active&size=1", { signal }),
+    select: (page) => page.counts,
+    refetchInterval: 60_000,
+    enabled,
   });
 }
 

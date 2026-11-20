@@ -16,7 +16,7 @@ import {
 } from "recharts";
 
 import { useI18n } from "@/lib/i18n/provider";
-import type { Analytics, DailyDecision, Decision, Monthly } from "@/lib/types";
+import type { DailyDecision, Decision, Monthly, RuleHit } from "@/lib/types";
 
 import {
   ANIMATION,
@@ -169,9 +169,7 @@ export function MonthlyIntakeChart({ monthly, metric }: { monthly: Monthly[]; me
   );
 }
 
-type Rule = Analytics["decisions"]["rules"][number];
-
-export function RuleHitsChart({ rules }: { rules: Rule[] }) {
+export function RuleHitsChart({ rules }: { rules: RuleHit[] }) {
   const i18n = useI18n();
   const data = rules.map((r) => ({ ...r, name: `${r.code} ${i18n.pick(r.label)}` }));
   return (
@@ -216,7 +214,7 @@ export function RuleHitsChart({ rules }: { rules: Rule[] }) {
   );
 }
 
-export function EffectChart({ effect }: { effect: Record<Decision, number> }) {
+export function EffectChart({ effect }: { effect: Record<Decision, number | null> }) {
   const i18n = useI18n();
   const data = DECISIONS.map((k) => ({ key: k, name: i18n.t(`overview.${k}`), value: effect[k] }));
   return (

@@ -63,16 +63,6 @@ class AuditLog(Base):
     actor: Mapped[User | None] = relationship(lazy="joined")
 
 
-class AnalyticsSnapshot(Base):
-    """Precomputed analysis payloads, keyed by name (for example ``demo``)."""
-
-    __tablename__ = "analytics_snapshots"
-
-    key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    payload: Mapped[dict[str, Any]]
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
-
-
 # ---- P2: datasets, indicators, binning schemes --------------------------------------------
 
 
@@ -442,3 +432,97 @@ class DecisionLog(Base):
     source: Mapped[str] = mapped_column(String(16), default="api")  # api|console|demo
     token_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("api_tokens.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+
+
+# ---- P5: monitors, runs and alerts --------------------------------------------------------
+
+
+class Monitor(Base):
+    """A scheduled check of one model, strategy or set of indicators against thresholds."""
+
+    __tablename__ = "monitors"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(128))
+    # indicator_psi | score_psi | model_ks | approval_rate | rule_hit_rate
+    kind: Mapped[str] = mapped_column(String(32))
+    model_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("risk_models.id", ondelete="CASCADE"), index=True
+    )
+    strategy_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("strategies.id", ondelete="CASCADE"), index=True
+    )
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("datasets.id", ondelete="SET NULL"))
+    params: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    thresholds: Mapped[dict[str, Any]] = mapped_column(default=dict)  # {"warn": x, "alert": y}
+    schedule: Mapped[dict[str, Any]] = mapped_column(default=dict)  # {"freq", "hour", "minute", "weekday"}
+    enabled: Mapped[bool] = mapped_column(default=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(index=True)
+    last_run_at: Mapped[datetime | None]
+    last_level: Mapped[str | None] = mapped_column(String(16))  # normal | warn | alert | error
+    last_value: Mapped[float | None]
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    owner: Mapped[User | None] = relationship(lazy="joined")
+    model: Mapped["RiskModel | None"] = relationship(lazy="joined")
+    strategy: Mapped["Strategy | None"] = relationship(lazy="joined")
+    dataset: Mapped[Dataset | None] = relationship(lazy="joined")
+
+
+class MonitorRun(Base):
+    """One evaluation of a monitor: the headline value, its level and the series behind it."""
+
+    __tablename__ = "monitor_runs"
+    __table_args__ = (Index("ix_monitor_runs_monitor_created", "monitor_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    monitor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("monitors.id", ondelete="CASCADE"))
+    trigger: Mapped[str] = mapped_column(String(16))  # schedule | manual | seed
+    status: Mapped[str] = mapped_column(String(16))  # done | failed
+    level: Mapped[str] = mapped_column(String(16))  # normal | warn | alert | error
+    value: Mapped[float | None]
+    detail: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    error: Mapped[str | None] = mapped_column(String(2000))
+    seconds: Mapped[float] = mapped_column(default=0.0)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    @property
+    def code(self) -> str | None:
+        """The error code of a failed run (for example ``too_few_requests``)."""
+        return (self.detail or {}).get("code") if self.status == "failed" else None
+
+
+class Alert(Base):
+    """An open problem raised by a monitor; one unresolved alert per monitor, updated by later runs."""
+
+    __tablename__ = "alerts"
+    __table_args__ = (
+        Index("uq_alert_active", "monitor_id", unique=True, postgresql_where=text("status <> 'resolved'")),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    monitor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("monitors.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("monitor_runs.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(16), default="open", index=True)  # open|acknowledged|resolved
+    level: Mapped[str] = mapped_column(String(16))  # warn | alert (the latest)
+    peak_level: Mapped[str] = mapped_column(String(16))
+    value: Mapped[float | None]
+    threshold: Mapped[float | None]
+    detail: Mapped[dict[str, Any]] = mapped_column(default=dict)  # headline facts of the latest run
+    occurrences: Mapped[int] = mapped_column(default=1)
+    first_seen_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    acknowledged_at: Mapped[datetime | None]
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    resolved_at: Mapped[datetime | None]
+    resolution: Mapped[str | None] = mapped_column(String(16))  # manual | recovered
+    note: Mapped[str] = mapped_column(String(1000), default="")
+    events: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+
+    monitor: Mapped[Monitor] = relationship(lazy="joined")
+    assignee: Mapped[User | None] = relationship(foreign_keys=[assignee_id], lazy="joined")
+    resolver: Mapped[User | None] = relationship(foreign_keys=[resolved_by], lazy="joined")

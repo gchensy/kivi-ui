@@ -70,7 +70,7 @@
    pnpm dev
    ```
 
-`seed-demo` 会创建演示账户 `admin`（管理员）、`analyst`（分析师）和一个待审核的 `newcomer`，密码为 `backend/.env` 中的 `KIVI_DEMO_PASSWORD`，仅供本地演示使用。它还会导入两个演示数据集（模拟零售信贷样本、kivi 自带的银行营销样本），登记 12 个指标，训练一个已上线的申请评分卡 RETAIL_APP v1，创建手机号黑名单与白名单，以及准入策略 RETAIL_APPLY（v1 已上线、v2 草稿，均已回测）约 2,500 条演示决策记录，以及五个监控（各运行一次，生成两条预警）。
+`seed-demo` 会创建演示账户 `admin`（管理员）、`analyst`（分析师）和一个待审核的 `newcomer`，仅供本地演示使用。密码取 `backend/.env` 中的 `KIVI_DEMO_PASSWORD`；留空时会生成随机密码并在命令输出中显示一次。`KIVI_ENV=production` 时该命令拒绝运行。它还会导入两个演示数据集（模拟零售信贷样本、kivi 自带的银行营销样本），登记 12 个指标，训练一个已上线的申请评分卡 RETAIL_APP v1，创建手机号黑名单与白名单，准入策略 RETAIL_APPLY（v1 已上线、v2 草稿，均已回测）、约 2,500 条演示决策记录，以及五个监控（各运行一次，生成两条预警）。演示决策会随日期自动顺延，近 30 天始终有数据。
 
 创建正式管理员：
 
@@ -196,7 +196,7 @@ Requires Docker, [uv](https://docs.astral.sh/uv/), Node.js 20+ and pnpm.
    pnpm dev
    ```
 
-`seed-demo` creates the demo accounts `admin` (administrator), `analyst` (analyst) and a pending sign-up `newcomer`. Their password is `KIVI_DEMO_PASSWORD` in `backend/.env`, for local demos only. It also imports two demo datasets (the simulated retail credit sample and kivi's bank marketing sample), registers 12 indicators, trains the online application scorecard RETAIL_APP v1, and creates a phone blacklist and whitelist, the admission strategy RETAIL_APPLY (v1 online, v2 draft, both backtested) about 2,500 demo decisions, and five monitors (each run once, raising two alerts).
+`seed-demo` creates the demo accounts `admin` (administrator), `analyst` (analyst) and a pending sign-up `newcomer`, for local demos only. Their password is `KIVI_DEMO_PASSWORD` in `backend/.env`; leave it empty and a random password is generated and printed once. The command refuses to run with `KIVI_ENV=production`. It also imports two demo datasets (the simulated retail credit sample and kivi's bank marketing sample), registers 12 indicators, trains the online application scorecard RETAIL_APP v1, and creates a phone blacklist and whitelist, the admission strategy RETAIL_APPLY (v1 online, v2 draft, both backtested), about 2,500 demo decisions, and five monitors (each run once, raising two alerts). Demo decisions move forward with the calendar, so the last 30 days always have data.
 
 Create a real administrator:
 

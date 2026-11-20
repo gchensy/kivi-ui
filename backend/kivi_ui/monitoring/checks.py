@@ -252,6 +252,11 @@ def indicator_psi(db: Session, monitor: Monitor) -> Outcome:
                 targets.append((item, column, binning.Rule.from_dict(f["rule"])))
     else:
         indicators = db.scalars(select(Indicator).where(Indicator.id.in_(ids))).unique().all()
+        codes = monitor.params.get("indicator_codes") or {}
+        found = {str(ind.id) for ind in indicators}
+        for gone in (str(i) for i in ids if str(i) not in found):
+            name = codes.get(gone) or f"#{gone[:8]}"
+            skipped.append({"code": name, "name": name, "name_en": None, "reason": "deleted"})
         for ind in sorted(indicators, key=lambda i: i.code):
             item = {"code": ind.code, "name": ind.name, "name_en": ind.name_en}
             source = ind.dataset.columns if ind.dataset else []

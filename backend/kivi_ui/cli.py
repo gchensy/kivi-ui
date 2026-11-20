@@ -2,6 +2,7 @@
 
 import argparse
 import getpass
+import secrets
 import sys
 
 from pydantic import ValidationError
@@ -65,11 +66,20 @@ def create_admin(args: argparse.Namespace) -> int:
     return 0
 
 
+def demo_password() -> tuple[str, bool]:
+    """KIVI_DEMO_PASSWORD, or a fresh random one (letters and digits) and True when it is not set."""
+    configured = get_settings().demo_password
+    if configured:
+        return configured, False
+    return f"kivi-{secrets.token_urlsafe(10)}-{secrets.randbelow(90) + 10}", True
+
+
 def seed_demo(args: argparse.Namespace) -> int:
-    password = get_settings().demo_password
-    if not password:
-        print("Set KIVI_DEMO_PASSWORD (see backend/.env.example) to create demo accounts.", file=sys.stderr)
+    if get_settings().env == "production":
+        print("seed-demo creates demo accounts; it won't run with KIVI_ENV=production.", file=sys.stderr)
         return 1
+    password, generated = demo_password()
+    created = False
     with get_sessionmaker()() as db:
         if getattr(args, "refresh", False):
             from .demo import refresh
@@ -77,7 +87,9 @@ def seed_demo(args: argparse.Namespace) -> int:
             refresh(db)
             print("demo data: removed for re-seeding")
         for username, email, name, role, status in DEMO_USERS:
-            print(f"user '{username}': {_upsert(db, username, email, name, role, status, password)}")
+            outcome = _upsert(db, username, email, name, role, status, password)
+            created = created or outcome == "created"
+            print(f"user '{username}': {outcome}")
         db.commit()
         admin = db.scalar(select(User).where(User.username == "admin"))
         from .demo import seed_datasets
@@ -97,12 +109,18 @@ def seed_demo(args: argparse.Namespace) -> int:
 
         for item in seed_monitors(db, admin, analyst):
             print(f"demo data: {item}")
+    if generated and created:
+        # Printed once, to the operator's own terminal; it is stored only as a hash.
+        print(f"demo password (KIVI_DEMO_PASSWORD was not set, so one was generated): {password}")
     return 0
 
 
 def worker(_: argparse.Namespace) -> int:
     """Run the background job worker in the foreground (when the API runs with KIVI_RUN_WORKER=false)."""
-    from . import model_jobs  # noqa: F401  (registers job handlers)
+    from . import (
+        demo_roll,  # noqa: F401  (keeps demo decisions current)
+        model_jobs,  # noqa: F401  (registers job handlers)
+    )
     from .jobs import Worker
     from .monitoring import service  # noqa: F401  (registers the schedule tick)
 

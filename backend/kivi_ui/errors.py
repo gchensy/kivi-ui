@@ -35,9 +35,14 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(DataError)
     @app.exception_handler(BinningError)
-    @app.exception_handler(RuleError)
-    async def _data_error(_: Request, exc: DataError | BinningError | RuleError) -> JSONResponse:
+    async def _data_error(_: Request, exc: DataError | BinningError) -> JSONResponse:
         return JSONResponse(jsonable_encoder(_body(exc.code, str(exc), exc.detail or None)), status_code=400)
+
+    # A strategy that can't run as configured (missing watchlist, model not online): 422, the same
+    # status the decision API returns, so backtests, the console and live calls agree.
+    @app.exception_handler(RuleError)
+    async def _rule_error(_: Request, exc: RuleError) -> JSONResponse:
+        return JSONResponse(jsonable_encoder(_body(exc.code, str(exc), exc.detail or None)), status_code=422)
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:

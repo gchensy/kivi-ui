@@ -411,6 +411,8 @@ class ApiToken(Base):
 
 class DecisionLog(Base):
     __tablename__ = "decision_logs"
+    # Lets the demo roll (demo_roll.py) find demo rows without scanning real traffic.
+    __table_args__ = (Index("ix_decision_logs_demo", "created_at", postgresql_where=text("source = 'demo'")),)
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     request_id: Mapped[str] = mapped_column(String(64), unique=True)

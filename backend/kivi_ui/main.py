@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from . import __version__, model_jobs  # noqa: F401  (registers job handlers)
+from . import __version__, demo_roll, model_jobs  # noqa: F401  (registers job handlers and ticks)
 from .config import get_settings
 from .errors import install_error_handlers
 from .jobs import Worker

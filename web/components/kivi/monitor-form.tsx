@@ -105,7 +105,8 @@ export function MonitorFormModal({
     if (onStrategy) {
       Object.assign(params, { window_days: Number(windowDays), baseline_days: Number(baselineDays), min_requests: Number(minRequests) });
     } else {
-      if (chooseIndicators) params.indicator_ids = [...picked];
+      // Indicators deleted since the monitor was saved are dropped rather than sent back.
+      if (chooseIndicators) params.indicator_ids = [...picked].filter((id) => !indicators.data || indicators.data.items.some((i) => i.id === id));
       if (refStart && refEnd) params.reference = { start: refStart, end: refEnd };
     }
     const body: Record<string, unknown> = {

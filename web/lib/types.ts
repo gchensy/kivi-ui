@@ -710,7 +710,7 @@ export interface RunFacts {
   strategy?: { code: string; version?: number };
   worst?: Worst;
   indicators?: { code: string; name: string; name_en: string | null; values: (number | null)[]; latest: number | null }[];
-  skipped?: { code: string; name: string; name_en: string | null; reason: "missing_column" | "no_scheme" }[];
+  skipped?: { code: string; name: string; name_en: string | null; reason: "missing_column" | "no_scheme" | "deleted" }[];
   reference_metrics?: { auc: number | null; ks: number | null; labelled: number };
   auc?: number | null;
   ks?: number | null;
@@ -742,6 +742,8 @@ export interface MonitorRunDetail extends MonitorRun {
 
 export interface MonitorParams {
   indicator_ids?: string[];
+  /** Codes of the chosen indicators when they were saved, so deleted ones can still be named. */
+  indicator_codes?: Record<string, string>;
   reference?: { start: string; end: string };
   window_days?: number;
   baseline_days?: number;

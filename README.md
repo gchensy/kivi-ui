@@ -10,7 +10,7 @@
 
 **kivi-ui** 是一个开源的金融风控管理平台，覆盖「数据 → 指标 → 模型 → 策略 → 风控监控」全链路。分箱、WOE、IV、PSI 等统计计算由 [kivi](https://github.com/gchensy/kivi) 完成，界面基于 [BoardUI](https://github.com/BoardUI/boardui) 设计体系。
 
-### 功能（P1–P2）
+### 功能（P1–P3）
 
 - **账户**：登录、注册（默认需管理员审核）、退出、修改密码、个人资料；连续 5 次失败锁定 15 分钟
 - **角色**：管理员、分析师；管理员可创建账户、激活注册、调整角色、停用、重置密码
@@ -22,6 +22,8 @@
 - **指标分析**：IV 排行，单指标分箱的 WOE、坏账率、样本占比
 - **模型表现**：训练集与跨时间验证（OOT）的 ROC、KS 曲线、分数分布、十等分效果表、评分卡分值
 - **稳定性监控**：月度分数 PSI、月度 AUC/KS、指标 × 月份 PSI 热力图，超阈值自动生成预警
+- **模型管理**：评分卡训练向导（OOT 与测试集划分、在训练集上重拟合分箱、IV → VIF → 系数符号 → 显著性逐步筛选、PDO 刻度），后台任务队列训练；版本报告含各样本 AUC/KS/Gini、ROC、KS 曲线、分数分布与 PSI、系数与 p 值、VIF、变量稳定性、评分卡分值与筛选记录
+- **评审与上线**：草稿 → 待审批 → 已批准 → 已上线 → 已下线，四眼原则（作者与提交人不能审批），每个模型只有一个在线版本，全程评审记录；批量打分生成新的数据集
 - **中英双语、明暗主题** 一键切换；所有图表都可切换为表格查看
 
 演示数据为模拟的零售信贷申请样本（12 个月、约 2.4 万笔，最后三个月带有渠道与查询次数漂移），首次启动即有完整的分析结果。
@@ -31,7 +33,7 @@
 | 层 | 技术 |
 | --- | --- |
 | 后端 | Python 3.11+ · FastAPI · Pydantic v2 · SQLAlchemy 2 · Alembic · psycopg 3 |
-| 计算 | kivi 0.4（`bin_edges`、`cut`、`chimerge_edges`、`tree_edges`、`monotonic_edges`、`woe_table`、`psi_table`）· scikit-learn（逻辑回归、ROC） |
+| 计算 | kivi 0.4（`bin_edges`、`cut`、`chimerge_edges`、`tree_edges`、`monotonic_edges`、`woe_table`、`psi_table`）· statsmodels（逻辑回归、p 值、VIF）· scikit-learn（ROC） |
 | 数据库 | PostgreSQL 18 |
 | 前端 | Next.js 16 · React 19 · Tailwind CSS v4 · React Aria · TanStack Query · Recharts · BoardUI |
 
@@ -64,7 +66,7 @@
    pnpm dev
    ```
 
-`seed-demo` 会创建演示账户 `admin`（管理员）、`analyst`（分析师）和一个待审核的 `newcomer`，密码为 `backend/.env` 中的 `KIVI_DEMO_PASSWORD`，仅供本地演示使用。它还会导入两个演示数据集（模拟零售信贷样本、kivi 自带的银行营销样本）并登记 12 个指标。
+`seed-demo` 会创建演示账户 `admin`（管理员）、`analyst`（分析师）和一个待审核的 `newcomer`，密码为 `backend/.env` 中的 `KIVI_DEMO_PASSWORD`，仅供本地演示使用。它还会导入两个演示数据集（模拟零售信贷样本、kivi 自带的银行营销样本），登记 12 个指标，并训练一个已上线的申请评分卡 RETAIL_APP v1。
 
 创建正式管理员：
 
@@ -83,6 +85,8 @@ cd backend && uv run kivi-ui create-admin --username alice --email alice@example
 | `KIVI_COOKIE_SECURE` | 仅通过 HTTPS 发送会话 Cookie，生产环境必须为 `true` | `false` |
 | `KIVI_SIGNUP_MODE` | `approval` 需审核 / `open` 直接开通 / `closed` 关闭注册 | `approval` |
 | `KIVI_SESSION_HOURS` | 会话有效期（小时） | `8` |
+| `KIVI_REQUIRE_FOUR_EYES` | 作者与提交人不能审批自己的模型版本 | `true` |
+| `KIVI_RUN_WORKER` | 在 API 进程内运行后台任务；设为 `false` 时用 `uv run kivi-ui worker` 单独运行 | `true` |
 
 前端通过 `KIVI_API_URL`（默认 `http://127.0.0.1:8000`）把 `/api/*` 反向代理到后端，浏览器与后端始终同源。
 
@@ -99,7 +103,7 @@ cd web && pnpm typecheck && pnpm build
 | --- | --- | --- |
 | P1 | 账户、权限、审计、风控可视化 | ✅ |
 | P2 | 数据集上传与画像、指标筛选、指标目录、分箱工作台与方案、指标稳定性 | ✅ |
-| P3 | 评分卡开发向导、模型版本与审批上线 | 计划中 |
+| P3 | 评分卡开发向导、模型版本、评审上线、批量打分、后台任务队列 | ✅ |
 | P4 | 策略规则、回测、名单、实时决策接口 | 计划中 |
 | P5 | 监控任务调度、预警处理 | 计划中 |
 
@@ -113,7 +117,7 @@ cd web && pnpm typecheck && pnpm build
 
 **kivi-ui** is an open-source credit risk management platform covering data, indicators, models, strategies and monitoring. Binning, WOE, IV and PSI are computed with [kivi](https://github.com/gchensy/kivi); the interface is built on the [BoardUI](https://github.com/BoardUI/boardui) design system.
 
-### Features (P1–P2)
+### Features (P1–P3)
 
 - **Accounts**: sign in, sign up (administrator approval by default), sign out, change password, profile; 15-minute lockout after 5 failed attempts
 - **Roles**: administrator and analyst; administrators create accounts, approve sign-ups, change roles, disable accounts and reset passwords
@@ -125,6 +129,8 @@ cd web && pnpm typecheck && pnpm build
 - **Indicators**: information value ranking and per-bin WOE, bad rate and share
 - **Model performance**: ROC, KS curve, score distribution, decile gains and scorecard points for training and out-of-time samples
 - **Stability**: monthly score PSI, monthly AUC/KS and an indicator × month PSI heatmap, with alerts above thresholds
+- **Models**: a scorecard training wizard (OOT and test splits, binning refitted on training rows, stepwise IV → VIF → coefficient sign → significance selection, PDO scaling) trained by a background job queue; version reports with AUC/KS/Gini per split, ROC, KS curve, score distribution and PSI, coefficients with p-values and VIF, variable stability, scorecard points and the selection log
+- **Review and deployment**: draft → in review → approved → online → retired with four eyes (authors and submitters can't approve), one online version per model and a full review trail; batch scoring saves a new dataset
 - **Chinese/English and light/dark** switching everywhere; every chart has a table view
 
 The demo data is a simulated retail credit application sample (12 months, about 24,000 applications, with channel and inquiry drift in the last three months), so every page has real analysis on first start.
@@ -134,7 +140,7 @@ The demo data is a simulated retail credit application sample (12 months, about 
 | Layer | Technology |
 | --- | --- |
 | Backend | Python 3.11+ · FastAPI · Pydantic v2 · SQLAlchemy 2 · Alembic · psycopg 3 |
-| Analytics | kivi 0.4 (`bin_edges`, `cut`, `chimerge_edges`, `tree_edges`, `monotonic_edges`, `woe_table`, `psi_table`) · scikit-learn (logistic regression, ROC) |
+| Analytics | kivi 0.4 (`bin_edges`, `cut`, `chimerge_edges`, `tree_edges`, `monotonic_edges`, `woe_table`, `psi_table`) · statsmodels (logistic regression, p-values, VIF) · scikit-learn (ROC) |
 | Database | PostgreSQL 18 |
 | Frontend | Next.js 16 · React 19 · Tailwind CSS v4 · React Aria · TanStack Query · Recharts · BoardUI |
 
@@ -167,7 +173,7 @@ Requires Docker, [uv](https://docs.astral.sh/uv/), Node.js 20+ and pnpm.
    pnpm dev
    ```
 
-`seed-demo` creates the demo accounts `admin` (administrator), `analyst` (analyst) and a pending sign-up `newcomer`. Their password is `KIVI_DEMO_PASSWORD` in `backend/.env`, for local demos only. It also imports two demo datasets (the simulated retail credit sample and kivi's bank marketing sample) and registers 12 indicators.
+`seed-demo` creates the demo accounts `admin` (administrator), `analyst` (analyst) and a pending sign-up `newcomer`. Their password is `KIVI_DEMO_PASSWORD` in `backend/.env`, for local demos only. It also imports two demo datasets (the simulated retail credit sample and kivi's bank marketing sample), registers 12 indicators and trains the online application scorecard RETAIL_APP v1.
 
 Create a real administrator:
 
@@ -186,6 +192,8 @@ The API reads `KIVI_`-prefixed environment variables (see `backend/.env.example`
 | `KIVI_COOKIE_SECURE` | Send the session cookie over HTTPS only; must be `true` in production | `false` |
 | `KIVI_SIGNUP_MODE` | `approval`, `open` or `closed` | `approval` |
 | `KIVI_SESSION_HOURS` | Session lifetime in hours | `8` |
+| `KIVI_REQUIRE_FOUR_EYES` | Authors and submitters can't approve their own model versions | `true` |
+| `KIVI_RUN_WORKER` | Run background jobs inside the API process; with `false`, run `uv run kivi-ui worker` separately | `true` |
 
 The web app proxies `/api/*` to `KIVI_API_URL` (default `http://127.0.0.1:8000`), so the browser always talks to one origin.
 
@@ -202,7 +210,7 @@ cd web && pnpm typecheck && pnpm build
 | --- | --- | --- |
 | P1 | Accounts, roles, audit, risk visualisation | ✅ |
 | P2 | Dataset upload and profiling, screening, indicator catalogue, binning workbench and schemes, indicator stability | ✅ |
-| P3 | Scorecard wizard, model versions, approval and deployment | Planned |
+| P3 | Scorecard wizard, model versions, review and deployment, batch scoring, background job queue | ✅ |
 | P4 | Strategy rules, backtesting, watchlists, real-time decision API | Planned |
 | P5 | Scheduled monitors and alert handling | Planned |
 

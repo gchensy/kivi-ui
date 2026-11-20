@@ -51,10 +51,10 @@ jobs:
         run: uv sync --locked
 
       - name: Lint
-        run: uv run ruff check kivi_ui tests
+        run: uv run ruff check kivi_ui tests migrations
 
       - name: Check formatting
-        run: uv run ruff format --check kivi_ui tests
+        run: uv run ruff format --check kivi_ui tests migrations
 
       - name: Apply migrations
         env:

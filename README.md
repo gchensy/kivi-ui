@@ -10,11 +10,14 @@
 
 **kivi-ui** 是一个开源的金融风控管理平台，覆盖「数据 → 指标 → 模型 → 策略 → 风控监控」全链路。分箱、WOE、IV、PSI 等统计计算由 [kivi](https://github.com/gchensy/kivi) 完成，界面基于 [BoardUI](https://github.com/BoardUI/boardui) 设计体系。
 
-### 功能（P1）
+### 功能（P1–P2）
 
 - **账户**：登录、注册（默认需管理员审核）、退出、修改密码、个人资料；连续 5 次失败锁定 15 分钟
 - **角色**：管理员、分析师；管理员可创建账户、激活注册、调整角色、停用、重置密码
-- **审计日志**：登录、注册与账户变更全程留痕
+- **审计日志**：登录、注册、账户变更以及数据与指标操作全程留痕
+- **数据管理**：上传 CSV（自动识别分隔符、UTF-8/GBK 编码、字段类型、目标列、日期列与主键），按月统计样本量与坏样本率，字段画像与快速 IV，数据预览
+- **指标筛选**：用同一种分箱方法批量计算所有特征的 IV，一键把有预测力的字段登记为指标
+- **指标管理**：指标目录（分类、状态、口径、中英文名称）；分箱工作台支持等频、等距、卡方合并、决策树、单调 WOE、手工切点与类别分组，并支持特殊值单独成箱；保存多个分箱方案并指定默认方案；按月计算 PSI 稳定性
 - **风控总览**：近 30 天申请量、通过率、模型 AUC/KS、分数 PSI、预警；每日决策、规则命中、策略效果、月度进件
 - **指标分析**：IV 排行，单指标分箱的 WOE、坏账率、样本占比
 - **模型表现**：训练集与跨时间验证（OOT）的 ROC、KS 曲线、分数分布、十等分效果表、评分卡分值
@@ -28,7 +31,7 @@
 | 层 | 技术 |
 | --- | --- |
 | 后端 | Python 3.11+ · FastAPI · Pydantic v2 · SQLAlchemy 2 · Alembic · psycopg 3 |
-| 计算 | kivi（`bin_edges` / `woe_table` / `psi_table`）· scikit-learn（逻辑回归、ROC） |
+| 计算 | kivi 0.4（`bin_edges`、`cut`、`chimerge_edges`、`tree_edges`、`monotonic_edges`、`woe_table`、`psi_table`）· scikit-learn（逻辑回归、ROC） |
 | 数据库 | PostgreSQL 18 |
 | 前端 | Next.js 16 · React 19 · Tailwind CSS v4 · React Aria · TanStack Query · Recharts · BoardUI |
 
@@ -61,7 +64,7 @@
    pnpm dev
    ```
 
-`seed-demo` 会创建演示账户 `admin`（管理员）、`analyst`（分析师）和一个待审核的 `newcomer`，密码为 `backend/.env` 中的 `KIVI_DEMO_PASSWORD`，仅供本地演示使用。
+`seed-demo` 会创建演示账户 `admin`（管理员）、`analyst`（分析师）和一个待审核的 `newcomer`，密码为 `backend/.env` 中的 `KIVI_DEMO_PASSWORD`，仅供本地演示使用。它还会导入两个演示数据集（模拟零售信贷样本、kivi 自带的银行营销样本）并登记 12 个指标。
 
 创建正式管理员：
 
@@ -95,7 +98,7 @@ cd web && pnpm typecheck && pnpm build
 | 阶段 | 内容 | 状态 |
 | --- | --- | --- |
 | P1 | 账户、权限、审计、风控可视化 | ✅ |
-| P2 | 数据集上传与画像、指标目录、分箱方案管理 | 计划中 |
+| P2 | 数据集上传与画像、指标筛选、指标目录、分箱工作台与方案、指标稳定性 | ✅ |
 | P3 | 评分卡开发向导、模型版本与审批上线 | 计划中 |
 | P4 | 策略规则、回测、名单、实时决策接口 | 计划中 |
 | P5 | 监控任务调度、预警处理 | 计划中 |
@@ -110,11 +113,14 @@ cd web && pnpm typecheck && pnpm build
 
 **kivi-ui** is an open-source credit risk management platform covering data, indicators, models, strategies and monitoring. Binning, WOE, IV and PSI are computed with [kivi](https://github.com/gchensy/kivi); the interface is built on the [BoardUI](https://github.com/BoardUI/boardui) design system.
 
-### Features (P1)
+### Features (P1–P2)
 
 - **Accounts**: sign in, sign up (administrator approval by default), sign out, change password, profile; 15-minute lockout after 5 failed attempts
 - **Roles**: administrator and analyst; administrators create accounts, approve sign-ups, change roles, disable accounts and reset passwords
-- **Audit log** of every sign-in, sign-up and account change
+- **Audit log** of every sign-in, sign-up, account change and data or indicator change
+- **Data**: CSV upload with automatic delimiter, UTF-8/GBK encoding, column type, target, date and ID detection; monthly volume and bad rate; column profiles with quick IV; data preview
+- **Screening**: bin every feature the same way, rank by IV and register the predictive ones as indicators in one click
+- **Indicators**: a catalogue with categories, status, definitions and Chinese/English names; a binning workbench with quantile, equal-width, ChiMerge, decision-tree, monotonic-WOE, manual and category binning, plus special values in their own bins; several saved schemes per indicator with a default; monthly PSI stability
 - **Risk overview**: 30-day applications, approval rate, model AUC/KS, score PSI and alerts; daily decisions, rule hits, strategy effect and monthly intake
 - **Indicators**: information value ranking and per-bin WOE, bad rate and share
 - **Model performance**: ROC, KS curve, score distribution, decile gains and scorecard points for training and out-of-time samples
@@ -128,7 +134,7 @@ The demo data is a simulated retail credit application sample (12 months, about 
 | Layer | Technology |
 | --- | --- |
 | Backend | Python 3.11+ · FastAPI · Pydantic v2 · SQLAlchemy 2 · Alembic · psycopg 3 |
-| Analytics | kivi (`bin_edges` / `woe_table` / `psi_table`) · scikit-learn (logistic regression, ROC) |
+| Analytics | kivi 0.4 (`bin_edges`, `cut`, `chimerge_edges`, `tree_edges`, `monotonic_edges`, `woe_table`, `psi_table`) · scikit-learn (logistic regression, ROC) |
 | Database | PostgreSQL 18 |
 | Frontend | Next.js 16 · React 19 · Tailwind CSS v4 · React Aria · TanStack Query · Recharts · BoardUI |
 
@@ -161,7 +167,7 @@ Requires Docker, [uv](https://docs.astral.sh/uv/), Node.js 20+ and pnpm.
    pnpm dev
    ```
 
-`seed-demo` creates the demo accounts `admin` (administrator), `analyst` (analyst) and a pending sign-up `newcomer`. Their password is `KIVI_DEMO_PASSWORD` in `backend/.env`, for local demos only.
+`seed-demo` creates the demo accounts `admin` (administrator), `analyst` (analyst) and a pending sign-up `newcomer`. Their password is `KIVI_DEMO_PASSWORD` in `backend/.env`, for local demos only. It also imports two demo datasets (the simulated retail credit sample and kivi's bank marketing sample) and registers 12 indicators.
 
 Create a real administrator:
 
@@ -195,7 +201,7 @@ cd web && pnpm typecheck && pnpm build
 | Phase | Scope | Status |
 | --- | --- | --- |
 | P1 | Accounts, roles, audit, risk visualisation | ✅ |
-| P2 | Dataset upload and profiling, indicator catalogue, binning schemes | Planned |
+| P2 | Dataset upload and profiling, screening, indicator catalogue, binning workbench and schemes, indicator stability | ✅ |
 | P3 | Scorecard wizard, model versions, approval and deployment | Planned |
 | P4 | Strategy rules, backtesting, watchlists, real-time decision API | Planned |
 | P5 | Scheduled monitors and alert handling | Planned |

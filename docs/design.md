@@ -55,7 +55,7 @@
 | ORM / 迁移 | SQLAlchemy 2.0（同步）+ Alembic | kivi / pandas 是同步计算，同步 ORM 更简单；耗时计算放 worker。 |
 | 驱动 | psycopg 3 | Postgres 官方推荐驱动。 |
 | 密码 / 会话 | argon2id（`argon2-cffi`）+ JWT（`PyJWT`），httpOnly Cookie | 无需额外会话存储。 |
-| 计算 | **kivi**（PyPI 依赖 `kivi>=0.3.0`，由 uv 装进 `backend/.venv`，不引用本地路径）+ scikit-learn | kivi 0.3.0 提供 `bin_edges`、`woe_table`、`psi_table`；逻辑回归与 ROC 暂用 scikit-learn。kivi 发布 `Binner` / `BinningTable` / `LogisticScore` / `VIFAnalysis` 后切换。 |
+| 计算 | **kivi**（PyPI 依赖 `kivi>=0.4.0`，由 uv 装进 `backend/.venv`，不引用本地路径）+ scikit-learn | kivi 0.4 提供 `bin_edges`、`cut`（特殊值分组）、`chimerge_edges`、`tree_edges`、`monotonic_edges`、`woe_table`、`psi_table`；逻辑回归与 ROC 暂用 scikit-learn，kivi 提供评分卡建模接口后切换。 |
 | 后台任务 | Postgres 任务表 + `SELECT … FOR UPDATE SKIP LOCKED` | 不引入 Redis/Celery，部署只要 Postgres。 |
 | 前端 | Next.js 16（App Router）+ BoardUI 源码组件 | 与 BoardUI 原生工程一致，组件直接拷贝进项目可改。 |
 | 数据请求 | TanStack Query + `openapi-typescript` 生成类型 | 后端 Pydantic schema 为唯一真相源。 |
@@ -352,9 +352,9 @@ kivi-ui/
 
 | 期 | 内容 | 可验收结果 |
 | --- | --- | --- |
-| **P1 骨架、账户与可视化** | 仓库、Postgres、迁移、登录/注册/退出/改密、用户管理、审计、BoardUI 应用框架；风控总览用 kivi 在演示样本上实算：KPI、指标 IV 排行、WOE 与坏率图、ROC/KS、分数分布、月度 PSI、模拟决策趋势 | 能注册 → 管理员激活 → 登录 → 看到完整的风控总览图表 |
-| **P2 数据与指标** | 数据集上传/预览/画像、指标目录、单指标分箱分析、PSI、批量筛选、任务队列 | 上传 bank 数据，看到 age 的 WOE/IV 图表并保存分箱方案 |
-| **P3 模型** | 评分卡向导、版本详情（AUC/KS/ROC/Lift）、审批与上线、批量打分 | 训练评分卡并走完提交—审批—上线 |
+| **P1 骨架、账户与可视化** ✅ | 仓库、Postgres、迁移、登录/注册/退出/改密、用户管理、审计、BoardUI 应用框架；风控总览用 kivi 在演示样本上实算：KPI、指标 IV 排行、WOE 与坏率图、ROC/KS、分数分布、月度 PSI、模拟决策趋势 | 能注册 → 管理员激活 → 登录 → 看到完整的风控总览图表 |
+| **P2 数据与指标** ✅ | 数据集上传/预览/画像、指标目录、分箱工作台（7 种方法 + 特殊值）、多方案与默认方案、按月 PSI、批量筛选与一键登记 | 上传 bank 数据，看到 age 的 WOE/IV 图表并保存分箱方案 |
+| **P3 模型** | 后台任务队列、评分卡向导、版本详情（AUC/KS/ROC/Lift）、审批与上线、批量打分 | 训练评分卡并走完提交—审批—上线 |
 | **P4 策略与决策** | 规则 DSL 与编辑器、回测与版本对比、名单、决策 API、决策记录、API Token | 用 curl 调决策接口得到命中规则与模型分 |
 | **P5 监控与总览** | 监控配置与调度、预警中心、风控总览真实数据 | 改动样本触发 PSI 预警并在总览出现 |
 
@@ -372,3 +372,4 @@ kivi-ui/
 6. 按 P1→P5 逐期交付；初期以好看、可交互的可视化为首要目标。
 7. 代码托管在 GitHub `gchensy/kivi-ui`。
 8. 开源协议 MIT；界面支持中英双语与明暗主题切换。
+9. P2 的上传、画像与分箱均为同步请求（单次上限 20 MB / 50 万行）；后台任务队列推迟到 P3，用于模型训练等耗时操作。分箱规则以 kivi-ui 自己的 JSON（切点、特殊值、类别映射）存储在 `binning_schemes.rule`。

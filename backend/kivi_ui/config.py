@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     run_worker: bool = True
 
     # Time zone in which monitor schedules ("daily at 06:00") are read.
-    timezone: str = "Asia/Shanghai"
+    timezone: str = "America/Los_Angeles"
 
     # Used only by `kivi-ui seed-demo` to create the demonstration accounts.
     demo_password: str | None = None

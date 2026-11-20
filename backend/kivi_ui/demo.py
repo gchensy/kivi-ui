@@ -276,6 +276,7 @@ def seed_strategy(db: Session, admin: User | None, analyst: User | None) -> list
     import pandas as pd
 
     from .models import DecisionLog, RiskList, Strategy, StrategyReview, StrategyVersion
+    from .monitoring.schedule import zone
     from .routes.lists import add_items  # noqa: F401  (same hashing as the API)
     from .rules import runtime
     from .rules.dsl import Definition
@@ -393,6 +394,7 @@ def seed_strategy(db: Session, admin: User | None, analyst: User | None) -> list
     created.append(f"strategy {STRATEGY_CODE} v1 online, v2 draft")
 
     # Decisions for the last 30 days of applications, as if they came through the API.
+    local_zone = zone().key
     recent = frame.applied_on >= (frame.applied_on.max() - pd.Timedelta(days=29))
     rules = {r.code: r for r in d1.rules}
     logs = []
@@ -400,7 +402,7 @@ def seed_strategy(db: Session, admin: User | None, analyst: User | None) -> list
         row = frame.loc[idx]
         hit = [c for c in r1.hits.columns if bool(r1.hits.at[idx, c])]
         deciding = r1.deciding_rule.at[idx]
-        at = pd.Timestamp(row.applied_on).tz_localize("Asia/Shanghai") + pd.Timedelta(
+        at = pd.Timestamp(row.applied_on).tz_localize(local_zone) + pd.Timedelta(
             hours=int(rng.integers(8, 22)), minutes=int(rng.integers(0, 60))
         )
         if at > now:  # today's applications arrive before now, never later today

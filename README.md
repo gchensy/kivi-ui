@@ -91,7 +91,7 @@ cd backend && uv run kivi-ui create-admin --username alice --email alice@example
 | `KIVI_SESSION_HOURS` | 会话有效期（小时） | `8` |
 | `KIVI_REQUIRE_FOUR_EYES` | 作者与提交人不能审批自己的模型版本 | `true` |
 | `KIVI_RUN_WORKER` | 在 API 进程内运行后台任务与监控计划；设为 `false` 时用 `uv run kivi-ui worker` 单独运行 | `true` |
-| `KIVI_TIMEZONE` | 监控运行计划（如「每天 06:00」）所用的时区 | `Asia/Shanghai` |
+| `KIVI_TIMEZONE` | 监控运行计划（如「每天 06:00」）与总览按天统计所用的时区（IANA 名称） | `America/Los_Angeles` |
 | `KIVI_LIST_KEY` | 名单摘要的 HMAC 密钥；建议单独设置，更换会话密钥时名单仍然有效 | 同 `KIVI_SECRET_KEY` |
 
 前端通过 `KIVI_API_URL`（默认 `http://127.0.0.1:8000`）把 `/api/*` 反向代理到后端，浏览器与后端始终同源。
@@ -217,7 +217,7 @@ The API reads `KIVI_`-prefixed environment variables (see `backend/.env.example`
 | `KIVI_SESSION_HOURS` | Session lifetime in hours | `8` |
 | `KIVI_REQUIRE_FOUR_EYES` | Authors and submitters can't approve their own model versions | `true` |
 | `KIVI_RUN_WORKER` | Run background jobs and monitor schedules inside the API process; with `false`, run `uv run kivi-ui worker` separately | `true` |
-| `KIVI_TIMEZONE` | Time zone of monitor schedules ("daily at 06:00") | `Asia/Shanghai` |
+| `KIVI_TIMEZONE` | Time zone (IANA name) of monitor schedules ("daily at 06:00") and of the overview's daily buckets | `America/Los_Angeles` |
 | `KIVI_LIST_KEY` | HMAC key for watchlist digests; set it separately so watchlists survive a session key rotation | `KIVI_SECRET_KEY` |
 
 The web app proxies `/api/*` to `KIVI_API_URL` (default `http://127.0.0.1:8000`), so the browser always talks to one origin.

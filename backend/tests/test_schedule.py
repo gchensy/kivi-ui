@@ -85,8 +85,9 @@ def test_next_run_defaults_to_now_and_the_configured_zone(monkeypatch):
     before = datetime.now(UTC)
     got = next_run({"freq": "hourly", "minute": 0})
     assert before < got <= before + timedelta(hours=1) and got.tzinfo is UTC
-    assert zone().key == "Asia/Shanghai"
-    assert next_run({"freq": "daily", "hour": 6}, utc(2026, 1, 10, 12)) == utc(2026, 1, 10, 22)
+    assert zone().key == "America/Los_Angeles"
+    # 06:00 PST is 14:00 UTC.
+    assert next_run({"freq": "daily", "hour": 6}, utc(2026, 1, 10, 12)) == utc(2026, 1, 10, 14)
 
     monkeypatch.setenv("KIVI_TIMEZONE", "Europe/Berlin")
     get_settings.cache_clear()

@@ -49,8 +49,8 @@ API = "/api/v1"
 MISSING = "00000000-0000-0000-0000-000000000000"
 FEATURES = ["income", "city", "年龄", "responded"]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 7)]
-TZ = ZoneInfo("Asia/Shanghai")
-NOW = datetime(2026, 11, 20, 4, 0, tzinfo=UTC)  # noon in Shanghai
+TZ = ZoneInfo("America/Los_Angeles")  # the default KIVI_TIMEZONE
+NOW = datetime(2026, 11, 20, 20, 0, tzinfo=UTC)  # noon in Los Angeles
 
 
 class Sessions:
@@ -1323,7 +1323,7 @@ def test_overview(users, db):
     make_alert(db, watched[0], "resolved", resolution="manual", seen=now - timedelta(days=3))
 
     got = users.ana.get(f"{API}/overview").json()
-    assert (got["as_of"], got["timezone"]) == (today.isoformat(), "Asia/Shanghai")
+    assert (got["as_of"], got["timezone"]) == (today.isoformat(), "America/Los_Angeles")
     decisions = got["decisions"]
     assert decisions["current"] == {
         "pass": 7,

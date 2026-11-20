@@ -55,7 +55,7 @@
 | ORM / 迁移 | SQLAlchemy 2.0（同步）+ Alembic | kivi / pandas 是同步计算，同步 ORM 更简单；耗时计算放 worker。 |
 | 驱动 | psycopg 3 | Postgres 官方推荐驱动。 |
 | 密码 / 会话 | argon2id（`argon2-cffi`）+ JWT（`PyJWT`），httpOnly Cookie | 无需额外会话存储。 |
-| 计算 | **kivi**（PyPI 依赖 `kivi[analysis]>=0.3.0`，由 uv 装进 `backend/.venv`，不引用本地路径） | 分箱、WOE、IV、PSI、评分卡、VIF、ROC/KS、Lift 全部复用。 |
+| 计算 | **kivi**（PyPI 依赖 `kivi>=0.3.0`，由 uv 装进 `backend/.venv`，不引用本地路径）+ scikit-learn | kivi 0.3.0 提供 `bin_edges`、`woe_table`、`psi_table`；逻辑回归与 ROC 暂用 scikit-learn。kivi 发布 `Binner` / `BinningTable` / `LogisticScore` / `VIFAnalysis` 后切换。 |
 | 后台任务 | Postgres 任务表 + `SELECT … FOR UPDATE SKIP LOCKED` | 不引入 Redis/Celery，部署只要 Postgres。 |
 | 前端 | Next.js 16（App Router）+ BoardUI 源码组件 | 与 BoardUI 原生工程一致，组件直接拷贝进项目可改。 |
 | 数据请求 | TanStack Query + `openapi-typescript` 生成类型 | 后端 Pydantic schema 为唯一真相源。 |
@@ -110,8 +110,8 @@
   3. 共线性筛选（`VIFAnalysis.select(threshold=…)`）；
   4. 训练：`BinningTable.fit` → `transform(output="score")` → `LogisticScore.fit`。
 - **版本详情**：入模变量 + 系数 + p 值；训练/测试/OOT 的 AUC、KS（`BinaryEvaluation`）；ROC 曲线；分数段 Lift、累计 KS、PSI（`LogisticScore.lift_compare`）；完整分箱编码表。
-- **评分口径**：沿用 kivi —— 每个变量按 WOE 映射为 0–100 分（分高风险低），模型分 = 按归一化系数加权的变量分（0–100）；同时输出违约概率 `predict`。
-- 模型产物：`BinningTable.save` 的 JSON + 系数，整体存 JSONB，不依赖 pickle，可审阅、可 diff。
+- **评分口径**：P1 采用传统 PDO 刻度（600 分对应好坏比 20:1，PDO 50，分高风险低），同时输出违约概率；kivi 新版提供变量分（0–100）后可作为第二种口径。
+- 模型产物：分箱切点 / WOE 表 + 系数，整体存 JSONB（kivi 新版后改用 `BinningTable.save` 的 JSON），不依赖 pickle，可审阅、可 diff。
 - 批量打分：对任一数据集打分并下载结果。
 - 生命周期：草稿 → 待审批 → 已批准 → 已上线 → 已下线；每个模型同时只有一个在线版本。
 
@@ -313,21 +313,20 @@ jobs               id, kind(profile|binning|batch_binning|train|score|backtest|m
 kivi-ui/
 ├── README.md
 ├── docs/design.md
-├── docker-compose.yml          # postgres + backend + worker + web
-├── scripts/dev-db.sh           # 用本机 PG18 在 .pgdata/ 起项目私有实例（端口 5433，无需 sudo）
+├── docker-compose.yml          # 开发用 PostgreSQL 18（后续加入 backend / worker / web）
+├── scripts/dev-db.sh           # docker compose 启停数据库（127.0.0.1:5433）
 ├── backend/
-│   ├── pyproject.toml          # uv；依赖 kivi[analysis]>=0.3.0（PyPI），装入 backend/.venv
+│   ├── pyproject.toml          # uv；依赖 kivi>=0.3.0（PyPI），装入 backend/.venv
 │   ├── alembic/
-│   ├── app/
-│   │   ├── main.py             # FastAPI 应用、路由注册、异常处理
-│   │   ├── cli.py              # create-admin / seed-demo
-│   │   ├── worker.py           # 任务队列消费 + 监控调度
-│   │   ├── core/               # config(pydantic-settings) · security · deps(当前用户/角色)
-│   │   ├── db/                 # engine · session · base
-│   │   ├── models/             # SQLAlchemy ORM
-│   │   ├── schemas/            # Pydantic 请求/响应、规则 DSL
-│   │   ├── api/v1/             # 各模块路由
-│   │   └── services/           # analysis(kivi 封装) · scorecard · rule_engine · backtest · monitoring · audit
+│   ├── kivi_ui/
+│   │   ├── main.py             # FastAPI 应用、路由注册、异常处理、CSRF 头校验
+│   │   ├── cli.py              # create-admin / seed-demo / build-analytics
+│   │   ├── config.py · db.py · security.py · deps.py · audit.py · errors.py
+│   │   ├── models.py           # SQLAlchemy ORM
+│   │   ├── schemas.py          # Pydantic 请求/响应
+│   │   ├── routes/             # auth · users · audit_logs · analytics
+│   │   └── analytics/          # sample（模拟样本）· scorecard（kivi 分箱/WOE/PSI + 评分卡）· service
+│   │   # 后续：worker.py（任务队列）、rule_engine、backtest、monitoring
 │   └── tests/                  # pytest，独立测试库
 └── web/
     ├── package.json            # Next 16 · React 19 · Tailwind 4 · react-aria-components · TanStack · recharts
@@ -342,8 +341,8 @@ kivi-ui/
 
 ## 10. 开发与部署
 
-- **开发**：`scripts/dev-db.sh` 用本机已安装的 PostgreSQL 18 在项目目录初始化私有实例（不改系统服务）；`uv run alembic upgrade head && uv run kivi-ui seed-demo`；`uv run uvicorn app.main:app --reload`；`uv run kivi-ui worker`；`pnpm dev`。
-- **演示数据**：用 kivi 内置 `Dataset.bank_data()` 和 `EnterpriseSample.simulate()` 生成两个数据集、一批指标与分箱方案、一个已上线的评分卡、一条准入策略、近 30 天模拟决策记录和几条预警，首次打开即有完整链路可看。
+- **开发**：`scripts/dev-db.sh start`（Docker 运行 PostgreSQL 18）；`uv run alembic upgrade head && uv run kivi-ui seed-demo`；`uv run uvicorn kivi_ui.main:app --reload`；`pnpm dev`。
+- **演示数据**：P1 模拟 12 个月约 2.4 万笔零售信贷申请（最后三个月合作渠道占比与征信查询次数上升），用 kivi 分箱、WOE、IV、PSI 训练评分卡、模拟 7 条准入规则与决策，并生成预警；结果存为分析快照。P2 起再加入 kivi 自带的 bank 样本。
 - **部署**：`docker compose up`（postgres:18、backend、worker、web）。
 - **测试**：后端 pytest（认证/权限/四眼原则、规则引擎两条执行路径一致性、kivi 封装结果与直接调用一致）；前端 `tsc --noEmit`；端到端在浏览器中走通登录 → 指标分析 → 建模 → 策略回测。
 
@@ -367,8 +366,9 @@ kivi-ui/
 
 1. 注册需管理员激活（`SIGNUP_MODE=approval`），激活后为分析师。
 2. 角色只保留管理员、分析师两种。
-3. 评分沿用 kivi 0–100 分口径（分高风险低），PDO 刻度作为可选展示。
+3. 评分：P1 采用 PDO 刻度（600 / 20:1 / 50），因为 PyPI 上的 kivi 0.3.0 尚无变量分功能；kivi 新版发布后增加 kivi 0–100 分口径。
 4. 前端用 Next.js，与 BoardUI 一致。
-5. kivi 以 PyPI 包形式装入后端 `.venv`，不引用本地路径。
+5. kivi 以 PyPI 包形式（`kivi>=0.3.0`）装入后端 `.venv`，不引用本地路径。
 6. 按 P1→P5 逐期交付；初期以好看、可交互的可视化为首要目标。
 7. 代码托管在 GitHub `gchensy/kivi-ui`。
+8. 开源协议 MIT；界面支持中英双语与明暗主题切换。

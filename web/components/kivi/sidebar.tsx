@@ -5,6 +5,8 @@ import {
   RiDatabase2Line,
   RiFileList3Line,
   RiFlowChart,
+  RiGitBranchLine,
+  RiKey2Line,
   RiLogoutBoxRLine,
   RiPulseLine,
   RiRulerLine,
@@ -68,8 +70,9 @@ export function navGroups(pendingUsers?: number): NavGroup[] {
     {
       key: "management",
       items: [
-        { href: "#strategies", key: "strategies", icon: RiFlowChart, soon: true },
-        { href: "#lists", key: "lists", icon: RiUserForbidLine, soon: true },
+        { href: "/strategies", key: "strategies", icon: RiFlowChart },
+        { href: "/lists", key: "lists", icon: RiUserForbidLine },
+        { href: "/decisions", key: "decisions", icon: RiGitBranchLine },
       ],
     },
     {
@@ -77,6 +80,7 @@ export function navGroups(pendingUsers?: number): NavGroup[] {
       adminOnly: true,
       items: [
         { href: "/admin/users", key: "users", icon: RiTeamLine, badge: pendingUsers || undefined },
+        { href: "/admin/tokens", key: "tokens", icon: RiKey2Line },
         { href: "/admin/audit", key: "audit", icon: RiFileList3Line },
       ],
     },

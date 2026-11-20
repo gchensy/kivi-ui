@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, Enum, ForeignKey, Identity, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, Enum, ForeignKey, Identity, Index, String, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -183,3 +183,107 @@ class BinningScheme(Base):
 
     indicator: Mapped[Indicator] = relationship(foreign_keys=[indicator_id], back_populates="schemes")
     author: Mapped[User | None] = relationship(foreign_keys=[created_by], lazy="joined")
+
+
+# ---- P3: models, versions, reviews and background jobs -------------------------------------
+
+
+class Job(Base):
+    """A unit of background work (training, scoring) claimed by the worker."""
+
+    __tablename__ = "jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    kind: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(
+        String(16), default="queued", index=True
+    )  # queued|running|done|failed
+    params: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    result: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    error: Mapped[str | None] = mapped_column(String(2000))
+    progress: Mapped[float] = mapped_column(default=0.0)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    started_at: Mapped[datetime | None]
+    finished_at: Mapped[datetime | None]
+
+
+class RiskModel(Base):
+    __tablename__ = "risk_models"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(128))
+    name_en: Mapped[str | None] = mapped_column(String(128))
+    scene: Mapped[str] = mapped_column(String(16), default="application")
+    description: Mapped[str] = mapped_column(String(2000), default="")
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    owner: Mapped[User | None] = relationship(lazy="joined")
+    versions: Mapped[list["ModelVersion"]] = relationship(
+        back_populates="model", cascade="all, delete-orphan", order_by="ModelVersion.version.desc()"
+    )
+
+
+class ModelVersion(Base):
+    __tablename__ = "model_versions"
+    __table_args__ = (
+        UniqueConstraint("model_id", "version"),
+        Index("uq_model_online", "model_id", unique=True, postgresql_where=text("status = 'online'")),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("risk_models.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int]
+    # training | failed | draft | in_review | approved | online | retired
+    status: Mapped[str] = mapped_column(String(16), default="training")
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("datasets.id", ondelete="SET NULL"))
+    config: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    result: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    feature_count: Mapped[int] = mapped_column(default=0)
+    auc_train: Mapped[float | None]
+    auc_test: Mapped[float | None]
+    auc_oot: Mapped[float | None]
+    ks_train: Mapped[float | None]
+    ks_test: Mapped[float | None]
+    ks_oot: Mapped[float | None]
+    notes: Mapped[str] = mapped_column(String(2000), default="")
+    error: Mapped[str | None] = mapped_column(String(2000))
+    job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    submitted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    submitted_at: Mapped[datetime | None]
+    approved_at: Mapped[datetime | None]
+    online_at: Mapped[datetime | None]
+    retired_at: Mapped[datetime | None]
+
+    model: Mapped[RiskModel] = relationship(back_populates="versions")
+    dataset: Mapped[Dataset | None] = relationship(lazy="joined")
+    author: Mapped[User | None] = relationship(foreign_keys=[created_by], lazy="joined")
+    submitter: Mapped[User | None] = relationship(foreign_keys=[submitted_by], lazy="joined")
+    approver: Mapped[User | None] = relationship(foreign_keys=[approved_by], lazy="joined")
+    reviews: Mapped[list["ModelReview"]] = relationship(
+        back_populates="version", cascade="all, delete-orphan", order_by="ModelReview.id"
+    )
+
+
+class ModelReview(Base):
+    """One lifecycle step of a version: submit, approve, reject, online, retire."""
+
+    __tablename__ = "model_reviews"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_versions.id", ondelete="CASCADE"), index=True
+    )
+    action: Mapped[str] = mapped_column(String(16))
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    comment: Mapped[str] = mapped_column(String(1000), default="")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    version: Mapped[ModelVersion] = relationship(back_populates="reviews")
+    actor: Mapped[User | None] = relationship(lazy="joined")

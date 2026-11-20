@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 
 import { api, ApiError } from "./api";
-import type { Analytics, Dataset, DatasetDetail, IndicatorDetail, IndicatorPage, User } from "./types";
+import type { Analytics, Dataset, DatasetDetail, IndicatorDetail, IndicatorPage, ModelDetail, RiskModel, User, VersionDetail } from "./types";
 
 export const meKey = ["auth", "me"] as const;
 
@@ -55,4 +55,24 @@ export function useIndicators(params: URLSearchParams) {
 
 export function useIndicator(id: string) {
   return useQuery({ queryKey: ["indicators", id], queryFn: ({ signal }) => api<IndicatorDetail>(`/indicators/${id}`, { signal }) });
+}
+
+export function useModels() {
+  return useQuery({ queryKey: ["models"], queryFn: ({ signal }) => api<RiskModel[]>("/models", { signal }) });
+}
+
+export function useModel(id: string) {
+  return useQuery({
+    queryKey: ["models", id],
+    queryFn: ({ signal }) => api<ModelDetail>(`/models/${id}`, { signal }),
+    refetchInterval: (query) => (query.state.data?.versions.some((v) => v.status === "training") ? 2000 : false),
+  });
+}
+
+export function useVersion(id: string) {
+  return useQuery({
+    queryKey: ["versions", id],
+    queryFn: ({ signal }) => api<VersionDetail>(`/model-versions/${id}`, { signal }),
+    refetchInterval: (query) => (query.state.data?.status === "training" ? 1500 : false),
+  });
 }

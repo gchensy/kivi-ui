@@ -81,6 +81,11 @@ def seed_demo(_: argparse.Namespace) -> int:
 
         for item in seed_datasets(db, admin):
             print(f"demo data: {item}")
+        from .demo import seed_model
+
+        analyst = db.scalar(select(User).where(User.username == "analyst"))
+        for item in seed_model(db, admin, analyst):
+            print(f"demo data: {item}")
     print(f"analytics snapshot: {payload['meta']['sample']['rows']} applications")
     return 0
 
@@ -89,6 +94,20 @@ def build_analytics(_: argparse.Namespace) -> int:
     with get_sessionmaker()() as db:
         payload = build_demo(db)
     print(f"analytics snapshot: {payload['meta']['sample']['rows']} applications")
+    return 0
+
+
+def worker(_: argparse.Namespace) -> int:
+    """Run the background job worker in the foreground (when the API runs with KIVI_RUN_WORKER=false)."""
+    from . import model_jobs  # noqa: F401  (registers job handlers)
+    from .jobs import Worker
+
+    loop = Worker()
+    print("kivi-ui worker: waiting for jobs (Ctrl+C to stop)")
+    try:
+        loop.run()
+    except KeyboardInterrupt:
+        loop.stop()
     return 0
 
 
@@ -107,6 +126,8 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("build-analytics", help="recompute the demo analytics").set_defaults(
         func=build_analytics
     )
+
+    commands.add_parser("worker", help="run the background job worker").set_defaults(func=worker)
 
     args = parser.parse_args(argv)
     return args.func(args)

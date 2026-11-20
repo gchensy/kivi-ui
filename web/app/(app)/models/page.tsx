@@ -1,225 +1,167 @@
 "use client";
 
-import { useState } from "react";
+import { RiAddLine, RiStackLine } from "@remixicon/react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState, type FormEvent } from "react";
 
+import { Chip } from "@/components/base/badges/chip";
+import { Button } from "@/components/base/buttons/button";
+import { Input } from "@/components/base/input/input";
+import { Textarea } from "@/components/base/textarea/textarea";
 import { PageHeader } from "@/components/kivi/app-shell";
-import { Legend } from "@/components/kivi/charts/kit";
-import { KsCurveChart, RocChart, ScoreDistributionChart, SPLIT_COLOR } from "@/components/kivi/charts/models";
-import { ChartPanel, DataTable, MetricSwitch, Panel } from "@/components/kivi/panel";
-import { ErrorState, PageSkeleton } from "@/components/kivi/states";
-import { bandLabel, binLabel } from "@/lib/format";
+import { FormError } from "@/components/kivi/form-error";
+import { Modal } from "@/components/kivi/modal";
+import { VersionStatusChip } from "@/components/kivi/model-status";
+import { SelectField } from "@/components/kivi/select-field";
+import { ErrorState, Skeleton } from "@/components/kivi/states";
+import { api, ApiError, errorMessage } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/provider";
-import { useAnalytics } from "@/lib/queries";
+import { indicatorName } from "@/lib/indicators";
+import { useModels } from "@/lib/queries";
+import type { ModelDetail, RiskModel, Scene } from "@/lib/types";
 
-function MetricCard({ label, train, oot }: { label: string; train: number; oot: number }) {
-  const i18n = useI18n();
-  const f = (v: number) => i18n.num(v, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-  const change = oot - train;
+const SCENES: Scene[] = ["application", "behavior", "collection", "fraud", "other"];
+
+function CreateModelModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { t } = useI18n();
+  const router = useRouter();
+  const client = useQueryClient();
+  const [scene, setScene] = useState<Scene>("application");
+  const [error, setError] = useState<string | null>(null);
+  const [invalid, setInvalid] = useState<string[]>([]);
+  const create = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api<ModelDetail>("/models", { body }),
+    onSuccess: (model) => {
+      client.invalidateQueries({ queryKey: ["models"] });
+      onClose();
+      router.push(`/models/${model.id}`);
+    },
+    onError: (err) => {
+      setError(errorMessage(err, t));
+      if (err instanceof ApiError) setInvalid([...err.fields, ...(err.code === "code_taken" ? ["code"] : [])]);
+    },
+  });
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    create.mutate({
+      code: String(form.get("code") ?? ""),
+      name: String(form.get("name") ?? ""),
+      name_en: String(form.get("name_en") ?? "") || null,
+      description: String(form.get("description") ?? ""),
+      scene,
+    });
+  };
   return (
-    <section className="flex flex-col gap-3 rounded-2xl bg-background-secondary-default p-4">
-      <p className="text-body-medium text-text-secondary">{label}</p>
-      <div className="flex items-end gap-6">
-        {([
-          ["train", train],
-          ["oot", oot],
-        ] as const).map(([split, value]) => (
-          <div key={split} className="flex flex-col gap-1">
-            <span className="flex items-center gap-1.5 text-caption-1-medium text-text-tertiary">
-              <span className="h-0.5 w-3 rounded-full" style={{ background: SPLIT_COLOR[split] }} aria-hidden />
-              {i18n.t(split === "train" ? "models.trainShort" : "models.ootShort")}
-            </span>
-            <span className="text-display-4-medium text-text-primary">{f(value)}</span>
-          </div>
-        ))}
-        <span className="ms-auto mb-1 rounded-full bg-background-primary-default px-2 py-0.5 text-body-2-medium text-text-secondary tabular-nums shadow-card">
-          {change >= 0 ? "+" : ""}
-          {f(change)}
+    <Modal isOpen={isOpen} onClose={onClose} title={t("mdl.createTitle")} description={t("mdl.createDesc")}>
+      <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+        <div className="grid grid-cols-2 gap-3">
+          <Input name="code" label={t("mdl.code")} hint={t("mdl.codeHint")} inputDir="ltr" isRequired isInvalid={invalid.includes("code")} />
+          <SelectField label={t("mdl.scene")} value={scene} onChange={(v) => setScene(v as Scene)} options={SCENES.map((s) => ({ id: s, label: t(`mdl.scenes.${s}`) }))} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Input name="name" label={t("mdl.name")} isRequired isInvalid={invalid.includes("name")} />
+          <Input name="name_en" label={t("mdl.nameEn")} />
+        </div>
+        <Textarea name="description" label={t("mdl.description")} rows={2} />
+        <FormError message={error} />
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" disabled={create.isPending}>{t("mdl.create")}</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="truncate text-caption-1-medium text-text-tertiary">{label}</span>
+      <span className="text-title-3-semibold text-text-primary tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+function ModelCard({ model }: { model: RiskModel }) {
+  const i18n = useI18n();
+  const { t } = i18n;
+  const online = model.online;
+  const f3 = (v: number | null | undefined) => i18n.num(v ?? null, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  return (
+    <Link
+      href={`/models/${model.id}`}
+      className="flex min-w-0 flex-col gap-4 rounded-2xl bg-background-secondary-default p-4 outline-none transition-colors hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"
+    >
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-2lg bg-linear-to-b from-purple-500 to-purple-600">
+          <RiStackLine className="size-5 text-white" aria-hidden />
         </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h2 className="truncate text-headline-medium text-text-primary">{indicatorName(model, i18n.locale)}</h2>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <code className="rounded-md bg-background-tertiary-default px-1.5 py-0.5 font-mono text-caption-1-medium text-text-secondary">{model.code}</code>
+            <Chip variant="subtle" color="purple">{t(`mdl.scenes.${model.scene}`)}</Chip>
+          </div>
+        </div>
       </div>
-    </section>
+      <div className="flex flex-col gap-3 rounded-xl bg-background-primary-default p-3 shadow-card">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-caption-1-medium text-text-tertiary">{t("mdl.online")}</span>
+          {online ? <VersionStatusChip status="online" label={`v${online.version}`} /> : <span className="text-caption-1-regular text-text-tertiary">{t("mdl.noOnline")}</span>}
+        </div>
+        {online && (
+          <div className="grid grid-cols-3 gap-3">
+            <Metric label="AUC · OOT" value={f3(online.auc_oot ?? online.auc_test)} />
+            <Metric label="KS · OOT" value={f3(online.ks_oot ?? online.ks_test)} />
+            <Metric label={t("mdl.features")} value={i18n.num(online.feature_count)} />
+          </div>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption-1-regular text-text-tertiary">
+        <span>{t("mdl.versions", { n: model.version_count })}</span>
+        {model.latest && (
+          <span className="flex items-center gap-1">
+            {t("mdl.latest")} v{model.latest.version}
+            <VersionStatusChip status={model.latest.status} />
+          </span>
+        )}
+        <span className="ms-auto">{model.owner?.display_name ?? "—"} · {i18n.date(model.updated_at, { dateStyle: "medium" })}</span>
+      </div>
+    </Link>
   );
 }
 
 export default function ModelsPage() {
-  const i18n = useI18n();
-  const { t } = i18n;
-  const query = useAnalytics();
-  const [bandMetric, setBandMetric] = useState<"share" | "bad_rate">("share");
-
-  if (query.error) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  if (!query.data) return <PageSkeleton />;
-  const { model, meta } = query.data;
-  const f3 = (v: number) => i18n.num(v, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-  const splitLegend = (
-    <Legend
-      items={[
-        { label: `${t("models.train")} ${i18n.month(meta.sample.train_months[0])}–${i18n.month(meta.sample.train_months[1])}`, color: SPLIT_COLOR.train, shape: "line" },
-        { label: `${t("models.oot")} ${i18n.month(meta.sample.oot_months[0])}–${i18n.month(meta.sample.oot_months[1])}`, color: SPLIT_COLOR.oot, shape: "line" },
-      ]}
-    />
-  );
-
+  const { t } = useI18n();
+  const models = useModels();
+  const [creating, setCreating] = useState(false);
   return (
     <>
-      <PageHeader
-        title={t("models.title")}
-        subtitle={t("models.subtitle", { model: i18n.pick(model.name), version: model.version, features: model.features.length })}
-        actions={
-          <span className="flex items-center gap-2 rounded-xl bg-background-secondary-default px-3 py-2 text-body-2-regular text-text-secondary">
-            <span className="text-body-2-semibold text-text-primary">{t("models.scale")}</span>
-            {t("models.scaleText", { base: model.scale.base_score, odds: model.scale.base_odds, pdo: model.scale.pdo })}
-          </span>
-        }
-      />
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <MetricCard label="AUC" train={model.roc.train.auc} oot={model.roc.oot.auc} />
-        <MetricCard label="KS" train={model.roc.train.ks} oot={model.roc.oot.ks} />
-        <MetricCard label="Gini" train={model.roc.train.gini} oot={model.roc.oot.gini} />
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ChartPanel
-          title={t("models.roc")}
-          description={t("models.rocDesc")}
-          legend={splitLegend}
-          chartClassName="h-[320px]"
-          chart={<RocChart roc={model.roc} />}
-          table={
-            <DataTable
-              columns={[
-                { key: "fpr", label: "FPR", align: "end" },
-                { key: "train", label: `TPR ${t("models.trainShort")}`, align: "end" },
-                { key: "oot", label: `TPR ${t("models.ootShort")}`, align: "end" },
-              ]}
-              rows={model.roc.train.curve.map((p, i) => ({
-                key: i,
-                cells: { fpr: i18n.pct(p.fpr, 1), train: i18n.pct(p.tpr), oot: i18n.pct(model.roc.oot.curve[i]?.tpr) },
-              }))}
-            />
-          }
-        />
-        <ChartPanel
-          title={t("models.gains")}
-          description={t("models.gainsDesc")}
-          legend={
-            <Legend
-              items={[
-                { label: t("models.cumBad"), color: "var(--viz-1)", shape: "line" },
-                { label: t("models.cumGood"), color: "var(--viz-2)", shape: "line" },
-              ]}
-            />
-          }
-          chartClassName="h-[320px]"
-          chart={<KsCurveChart gains={model.gains} />}
-          table={
-            <DataTable
-              columns={[
-                { key: "decile", label: t("models.decile") },
-                { key: "range", label: t("models.scoreRange") },
-                { key: "count", label: t("models.count"), align: "end" },
-                { key: "rate", label: t("models.badRate"), align: "end" },
-                { key: "bad", label: t("models.cumBad"), align: "end" },
-                { key: "good", label: t("models.cumGood"), align: "end" },
-                { key: "ks", label: "KS", align: "end" },
-                { key: "lift", label: t("models.lift"), align: "end" },
-              ]}
-              rows={model.gains.map((g) => ({
-                key: g.decile,
-                cells: {
-                  decile: g.decile,
-                  range: `${g.min_score}–${g.max_score}`,
-                  count: i18n.num(g.count),
-                  rate: i18n.pct(g.bad_rate, 2),
-                  bad: i18n.pct(g.cum_bad_pct),
-                  good: i18n.pct(g.cum_good_pct),
-                  ks: f3(g.ks),
-                  lift: i18n.num(g.lift, { maximumFractionDigits: 2 }),
-                },
-              }))}
-            />
-          }
-        />
-      </div>
-
-      <ChartPanel
-        title={t("models.distribution")}
-        description={bandMetric === "share" ? t("models.distributionDesc") : t("models.distributionBadDesc")}
-        controls={
-          <MetricSwitch
-            label={t("models.distribution")}
-            value={bandMetric}
-            onChange={setBandMetric}
-            options={[
-              { id: "share", label: t("models.metricShare") },
-              { id: "bad_rate", label: t("models.metricBadRate") },
-            ]}
-          />
-        }
-        legend={
-          <Legend
-            items={[
-              { label: t("models.train"), color: SPLIT_COLOR.train },
-              { label: t("models.oot"), color: SPLIT_COLOR.oot },
-            ]}
-          />
-        }
-        chart={<ScoreDistributionChart bands={model.bands} metric={bandMetric} />}
-        table={
-          <DataTable
-            columns={[
-              { key: "band", label: t("models.band") },
-              { key: "trainShare", label: `${t("models.share")} · ${t("models.trainShort")}`, align: "end" },
-              { key: "ootShare", label: `${t("models.share")} · ${t("models.ootShort")}`, align: "end" },
-              { key: "trainBad", label: `${t("models.badRate")} · ${t("models.trainShort")}`, align: "end" },
-              { key: "ootBad", label: `${t("models.badRate")} · ${t("models.ootShort")}`, align: "end" },
-            ]}
-            rows={model.bands.train.map((b, i) => ({
-              key: b.band,
-              cells: {
-                band: bandLabel(b.lower, b.upper),
-                trainShare: i18n.pct(b.share),
-                ootShare: i18n.pct(model.bands.oot[i]?.share),
-                trainBad: i18n.pct(b.bad_rate, 2),
-                ootBad: i18n.pct(model.bands.oot[i]?.bad_rate, 2),
-              },
-            }))}
-          />
-        }
-      />
-
-      <Panel title={t("models.scorecard")} description={t("models.scorecardDesc")}>
-        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
-          {model.scorecard.map((card) => {
-            const max = Math.max(...card.bins.map((b) => b.points));
-            const min = Math.min(...card.bins.map((b) => b.points));
-            return (
-              <div key={card.name} className="flex flex-col gap-2 rounded-xl bg-background-primary-default p-3 shadow-card">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="truncate text-body-semibold text-text-primary">{i18n.pick(card.label)}</span>
-                  <span className="shrink-0 text-caption-1-medium text-text-tertiary tabular-nums">
-                    {t("models.coefficient")} {i18n.num(card.coefficient, { maximumFractionDigits: 3 })}
-                  </span>
-                </div>
-                <ul className="flex flex-col gap-1">
-                  {card.bins.map((b) => {
-                    const width = max === min ? 100 : 12 + ((b.points - min) / (max - min)) * 88;
-                    return (
-                      <li key={String(b.code)} className="grid grid-cols-[minmax(0,1fr)_96px_36px] items-center gap-2 text-body-2-regular">
-                        <span className="truncate text-text-secondary">{binLabel(b, card.unit, i18n)}</span>
-                        <span className="h-1.5 rounded-full bg-background-tertiary-default" aria-hidden>
-                          <span className="block h-1.5 rounded-full" style={{ width: `${width}%`, background: "var(--viz-1)" }} />
-                        </span>
-                        <span className="text-end text-body-2-semibold text-text-primary tabular-nums">{b.points}</span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            );
-          })}
+      <PageHeader title={t("mdl.title")} subtitle={t("mdl.subtitle")} actions={<Button leadingIcon={RiAddLine} onClick={() => setCreating(true)}>{t("mdl.create")}</Button>} />
+      {models.error ? (
+        <ErrorState error={models.error} onRetry={() => models.refetch()} />
+      ) : !models.data ? (
+        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+          <Skeleton className="h-[230px]" />
+          <Skeleton className="h-[230px]" />
         </div>
-      </Panel>
+      ) : models.data.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-2xl bg-background-secondary-default px-6 py-16 text-center">
+          <RiStackLine className="size-8 text-foreground-icon-tertiary" aria-hidden />
+          <p className="text-body-regular text-text-secondary">{t("mdl.empty")}</p>
+          <Button leadingIcon={RiAddLine} onClick={() => setCreating(true)}>{t("mdl.create")}</Button>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+          {models.data.map((model) => (
+            <ModelCard key={model.id} model={model} />
+          ))}
+        </div>
+      )}
+      <CreateModelModal isOpen={creating} onClose={() => setCreating(false)} />
     </>
   );
 }

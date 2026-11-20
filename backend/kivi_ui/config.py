@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     max_failed_logins: int = Field(5, ge=1)
     lockout_minutes: int = Field(15, ge=1)
 
+    # Run the background job worker inside the API process (training, batch scoring).
+    run_worker: bool = True
+
     # Used only by `kivi-ui seed-demo` to create the demonstration accounts.
     demo_password: str | None = None
 

@@ -13,13 +13,14 @@ import { useI18n } from "@/lib/i18n/provider";
 import type { AuditLog, AuditPage } from "@/lib/types";
 
 const SIZE = 20;
-type Filter = "" | "auth." | "user." | "dataset.,indicator.,scheme.";
+type Filter = "" | "auth." | "user." | "dataset.,indicator.,scheme." | "model.,version.";
 
 function describe(log: AuditLog, i18n: ReturnType<typeof useI18n>): string {
   const d = log.detail as {
     username?: string; role?: string; changes?: Record<string, [string, string]>; fields?: string[];
-    name?: string; code?: string; scheme?: string; rows?: number; count?: number; iv?: number;
+    name?: string; code?: string; scheme?: string; rows?: number; count?: number; iv?: number; version?: number;
   };
+  if (d.version !== undefined) return `${d.code ?? ""} v${d.version}`;
   if (d.scheme) return `${d.code ?? ""} · ${d.scheme}${d.iv !== undefined ? ` · IV ${i18n.num(d.iv, { maximumFractionDigits: 3 })}` : ""}`;
   if (d.count !== undefined) return `${d.name ?? ""} · ${d.count}`;
   if (d.rows !== undefined) return `${d.name ?? ""} · ${i18n.num(d.rows)}`;
@@ -73,6 +74,7 @@ export default function AuditPage() {
           <SegmentedControlItem id="auth.">{t("audit.filterAuth")}</SegmentedControlItem>
           <SegmentedControlItem id="user.">{t("audit.filterUser")}</SegmentedControlItem>
           <SegmentedControlItem id="dataset.,indicator.,scheme.">{t("audit.filterData")}</SegmentedControlItem>
+          <SegmentedControlItem id="model.,version.">{t("audit.filterModel")}</SegmentedControlItem>
         </SegmentedControl>
         <div className="overflow-x-auto rounded-xl bg-background-primary-default">
           {!data ? (

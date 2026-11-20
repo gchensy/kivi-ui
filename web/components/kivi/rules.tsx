@@ -42,7 +42,22 @@ function defaultValue(op: RuleOp): unknown {
 }
 
 /** Text box that keeps what the user typed and reports parsed values. */
-function ValueText({ value, onChange, numeric, placeholder, className }: { value: unknown; onChange: (v: unknown) => void; numeric: boolean; placeholder?: string; className?: string }) {
+function ValueText({
+  value,
+  onChange,
+  numeric,
+  label,
+  placeholder,
+  className,
+}: {
+  value: unknown;
+  onChange: (v: unknown) => void;
+  numeric: boolean;
+  /** Accessible name: the input sits in a row without a visible label. */
+  label: string;
+  placeholder?: string;
+  className?: string;
+}) {
   const [text, setText] = useState(value === null || value === undefined ? "" : String(value));
   useEffect(() => {
     const parsed = numberOrText(text, numeric);
@@ -53,6 +68,7 @@ function ValueText({ value, onChange, numeric, placeholder, className }: { value
     <input
       className={cx(FIELD, className)}
       value={text}
+      aria-label={label}
       placeholder={placeholder}
       inputMode={numeric ? "decimal" : undefined}
       onChange={(e) => {
@@ -81,6 +97,8 @@ function ConditionRow({
   const known = options?.fields.find((f) => f.name === condition.field);
   const numeric = known ? known.dtype === "numeric" : condition.field.startsWith("model:");
   const op = condition.op;
+  // "age · less than · value", so a screen reader can tell the rows apart.
+  const valueLabel = `${condition.field || t("stg.field")} · ${t(`stg.ops.${op}`)} · ${t("stg.value")}`;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <input
@@ -110,6 +128,7 @@ function ConditionRow({
             <ValueText
               key={i}
               className="w-[90px]"
+              label={`${valueLabel} · ${t(i === 0 ? "stg.valueLow" : "stg.valueHigh")}`}
               numeric
               value={(condition.value as number[] | undefined)?.[i] ?? ""}
               onChange={(v) => {
@@ -123,6 +142,7 @@ function ConditionRow({
       ) : op === "in" || op === "not_in" ? (
         <ValueText
           className="w-[220px]"
+          label={valueLabel}
           numeric={false}
           placeholder={t("stg.valuesHint")}
           value={(condition.value as unknown[] | undefined)?.join(", ") ?? ""}
@@ -140,7 +160,7 @@ function ConditionRow({
           ))}
         </select>
       ) : op === "is_null" || op === "not_null" ? null : (
-        <ValueText className="w-[140px]" numeric={numeric || ["gt", "ge", "lt", "le"].includes(op)} value={condition.value} onChange={(v) => onChange({ ...condition, value: v })} />
+        <ValueText className="w-[140px]" label={valueLabel} numeric={numeric || ["gt", "ge", "lt", "le"].includes(op)} value={condition.value} onChange={(v) => onChange({ ...condition, value: v })} />
       )}
       <button type="button" aria-label={t("stg.remove")} onClick={onRemove} className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-foreground-icon-tertiary hover:bg-background-secondary-hover hover:text-foreground-icon-primary">
         <RiCloseCircleFill className="size-4" aria-hidden />
@@ -319,7 +339,7 @@ export function RulesEditor({ definition, onChange, options }: { definition: Str
         </Button>
         <label className="flex items-center gap-2 text-body-2-medium text-text-secondary">
           {t("stg.defaultDecision")}
-          <select className={cx(FIELD, "w-[120px]")} value={definition.default_decision} onChange={(e) => onChange({ ...definition, default_decision: e.target.value as Decision })}>
+          <select className={cx(FIELD, "w-[120px]")} aria-label={t("stg.defaultDecision")} value={definition.default_decision} onChange={(e) => onChange({ ...definition, default_decision: e.target.value as Decision })}>
             {DECISIONS.map((d) => (
               <option key={d} value={d}>{t(`stg.decisions.${d}`)}</option>
             ))}

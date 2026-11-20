@@ -136,6 +136,17 @@ def _check_targets(db: Session, kind: str, model_id, strategy_id, dataset_id, in
             raise ApiError(404, "indicator_not_found", "Indicator not found", {"ids": missing})
 
 
+def _stored_params(db: Session, params: dict, previous: dict[str, str] | None = None) -> dict:
+    """Params plus a snapshot of the chosen indicators' codes, so a later deletion can be named."""
+    ids = params.get("indicator_ids") or []
+    if not ids:
+        return params
+    codes = dict(previous or {})
+    rows = db.execute(select(Indicator.id, Indicator.code).where(Indicator.id.in_(ids))).all()
+    codes.update({str(i): code for i, code in rows})
+    return params | {"indicator_codes": {i: codes[i] for i in ids if i in codes}}
+
+
 # ---- Monitors ----------------------------------------------------------------------------------
 
 
@@ -174,7 +185,7 @@ def create_monitor(body: MonitorIn, request: Request, user: CurrentUser, db: Db)
         model_id=body.model_id,
         strategy_id=body.strategy_id,
         dataset_id=dataset_id,
-        params=body.params.model_dump(mode="json", exclude_none=True),
+        params=_stored_params(db, body.params.model_dump(mode="json", exclude_none=True)),
         thresholds=(body.thresholds.model_dump() if body.thresholds else DEFAULT_THRESHOLDS[body.kind]),
         schedule=body.schedule.model_dump(),
         enabled=body.enabled,
@@ -218,7 +229,9 @@ def update_monitor(
         monitor.name = body.name.strip()
     monitor.dataset_id = dataset_id
     if params is not None:
-        monitor.params = params.model_dump(mode="json", exclude_none=True)
+        monitor.params = _stored_params(
+            db, params.model_dump(mode="json", exclude_none=True), monitor.params.get("indicator_codes")
+        )
     if body.thresholds is not None:
         monitor.thresholds = body.thresholds.model_dump()
     if body.schedule is not None:

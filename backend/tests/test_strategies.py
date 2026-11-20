@@ -606,14 +606,14 @@ def test_backtest_and_console_need_what_the_rules_reference(users):
         users.ana.post(f"{url}/backtest", json={"dataset_id": dataset["id"]}),
         console(users.ana, v1, {}),
     ):
-        assert response.status_code == 400 and response.json()["code"] == "list_not_found"
+        assert response.status_code == 422 and response.json()["code"] == "list_not_found"
         assert response.json()["detail"] == {"list": "BL_PHONE"}
     put(users.ana, v1, rule("R01", cond("model:RETAIL_APP.score", "lt", 500)))
     for response in (
         users.ana.post(f"{url}/backtest", json={"dataset_id": dataset["id"]}),
         console(users.ana, v1, {}),
     ):
-        assert response.status_code == 400 and response.json()["code"] == "model_not_online"
+        assert response.status_code == 422 and response.json()["code"] == "model_not_online"
 
     put(users.ana, v1, rule("R01", cond("income", "lt", 1)))
     assert (

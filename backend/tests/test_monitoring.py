@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from kivi_ui import jobs
 from kivi_ui.analytics import binning, metrics
 from kivi_ui.analytics.training import score_frame
+from kivi_ui.config import get_settings
 from kivi_ui.data import store
 from kivi_ui.demo import (
     MODEL_CODE,
@@ -498,6 +499,17 @@ def test_indicator_psi_on_chosen_indicators(users, model, db):
     got = run(ana, monitor)
     assert got["detail"]["code"] == "no_indicators"
     assert [s["reason"] for s in got["detail"]["skipped"]] == ["missing_column", "no_scheme"]
+
+    # The chosen indicators' codes are kept, so one deleted later is still named in the run.
+    saved = ana.get(f"{API}/monitors/{monitor['id']}").json()["params"]
+    assert saved["indicator_codes"] == {responded["id"]: "responded", outcome["id"]: "outcome"}
+    assert ana.delete(f"{API}/indicators/{outcome['id']}").status_code == 204
+    got = run(ana, monitor)
+    assert got["detail"]["code"] == "no_indicators"
+    assert got["detail"]["skipped"] == [
+        {"code": "outcome", "name": "outcome", "name_en": None, "reason": "deleted"},
+        {"code": "responded", "name": "responded", "name_en": None, "reason": "no_scheme"},
+    ]
 
 
 def test_model_inputs_are_matched_by_header(users, model, db):
@@ -1704,3 +1716,60 @@ def test_training_reference_covering_every_month_falls_back_to_the_first_half():
     assert _reference(months, {}, ["2026-01", "2026-06"]) == months[:3]
     # A training period that ends earlier is used as is.
     assert _reference(months, {}, ["2026-01", "2026-04"]) == months[:4]
+
+
+def test_demo_decisions_roll_forward_with_the_calendar(db):
+    from kivi_ui.demo_roll import roll_demo_decisions
+
+    now = datetime(2026, 12, 10, 20, 0, tzinfo=UTC)  # noon in Los Angeles
+    seeded = datetime(2026, 11, 20, 18, 0, tzinfo=UTC)  # the seed day, 10:00 local
+    log(db, "RETAIL_APPLY", "pass", seeded - timedelta(days=29), source="demo")
+    log(db, "RETAIL_APPLY", "pass", seeded, source="demo")
+    log(db, "RETAIL_APPLY", "reject", seeded + timedelta(hours=5), source="demo")  # 15:00 local
+    log(db, "RETAIL_APPLY", "pass", seeded, source="api")  # real traffic never moves
+    db.commit()
+
+    assert roll_demo_decisions(db, now) == 20
+    demo = select(DecisionLog.decision, DecisionLog.created_at).where(DecisionLog.source == "demo")
+    rows = db.execute(demo).all()
+    passes = sorted(at for decision, at in rows if decision == "pass")
+    [late] = db.scalars(select(DecisionLog.created_at).where(DecisionLog.decision == "reject")).all()
+    assert passes == [seeded - timedelta(days=9), seeded + timedelta(days=20)]
+    # 15:00 today is later than now, so it moves into the hours before now.
+    assert now - timedelta(hours=3) <= late < now
+    assert db.scalar(select(DecisionLog.created_at).where(DecisionLog.source == "api")) == seeded
+    # Already current: nothing moves.
+    assert roll_demo_decisions(db, now) == 0
+    assert roll_demo_decisions(db, now + timedelta(hours=1)) == 0
+
+
+def test_demo_roll_without_demo_data_is_a_no_op(db):
+    from kivi_ui.demo_roll import roll_demo_decisions
+
+    log(db, "RETAIL_APPLY", "pass", datetime(2026, 1, 1, tzinfo=UTC))
+    db.commit()
+    assert roll_demo_decisions(db, datetime(2026, 12, 1, tzinfo=UTC)) == 0
+
+
+def test_seed_demo_refuses_production_and_generates_a_password(monkeypatch):
+    from kivi_ui import cli
+    from kivi_ui.schemas import _password
+
+    monkeypatch.setenv("KIVI_DEMO_PASSWORD", "")
+    get_settings.cache_clear()
+    try:
+        passwords = {cli.demo_password() for _ in range(5)}
+        assert all(generated for _, generated in passwords) and len(passwords) == 5
+        for password, _ in passwords:
+            assert _password(password) == password  # meets the sign-up password rules
+        monkeypatch.setenv("KIVI_DEMO_PASSWORD", "Local-demo-123")
+        get_settings.cache_clear()
+        assert cli.demo_password() == ("Local-demo-123", False)
+
+        monkeypatch.setenv("KIVI_ENV", "production")
+        monkeypatch.setenv("KIVI_SECRET_KEY", "x" * 40)
+        monkeypatch.setenv("KIVI_COOKIE_SECURE", "true")
+        get_settings.cache_clear()
+        assert cli.main(["seed-demo"]) == 1
+    finally:
+        get_settings.cache_clear()

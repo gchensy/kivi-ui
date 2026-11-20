@@ -76,6 +76,11 @@ def seed_demo(_: argparse.Namespace) -> int:
             print(f"user '{username}': {_upsert(db, username, email, name, role, status, password)}")
         db.commit()
         payload = build_demo(db)
+        admin = db.scalar(select(User).where(User.username == "admin"))
+        from .demo import seed_datasets
+
+        for item in seed_datasets(db, admin):
+            print(f"demo data: {item}")
     print(f"analytics snapshot: {payload['meta']['sample']['rows']} applications")
     return 0
 

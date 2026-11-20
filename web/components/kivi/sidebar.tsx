@@ -52,9 +52,15 @@ export function navGroups(pendingUsers?: number): NavGroup[] {
   return [
     { key: "", items: [{ href: "/", key: "overview", icon: RiDashboardLine }] },
     {
+      key: "dataGroup",
+      items: [
+        { href: "/data", key: "data", icon: RiDatabase2Line },
+        { href: "/indicators", key: "indicators", icon: RiRulerLine },
+      ],
+    },
+    {
       key: "analysis",
       items: [
-        { href: "/indicators", key: "indicators", icon: RiRulerLine },
         { href: "/models", key: "models", icon: RiStackLine },
         { href: "/stability", key: "stability", icon: RiPulseLine },
       ],
@@ -62,7 +68,6 @@ export function navGroups(pendingUsers?: number): NavGroup[] {
     {
       key: "management",
       items: [
-        { href: "#data", key: "data", icon: RiDatabase2Line, soon: true },
         { href: "#strategies", key: "strategies", icon: RiFlowChart, soon: true },
         { href: "#lists", key: "lists", icon: RiUserForbidLine, soon: true },
       ],

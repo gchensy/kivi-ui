@@ -1,7 +1,7 @@
 """Read-only audit trail for administrators."""
 
 from fastapi import APIRouter, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from ..deps import AdminUser, Db
 from ..models import AuditLog
@@ -20,7 +20,8 @@ def list_audit_logs(
 ) -> AuditPage:
     query = select(AuditLog)
     if action:
-        query = query.where(AuditLog.action.startswith(action))
+        prefixes = [p.strip() for p in action.split(",") if p.strip()]
+        query = query.where(or_(*(AuditLog.action.startswith(p) for p in prefixes)))
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     items = (
         db.scalars(query.order_by(AuditLog.id.desc()).offset((page - 1) * size).limit(size)).unique().all()

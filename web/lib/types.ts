@@ -217,3 +217,168 @@ export interface Analytics {
   };
   alerts: Alert[];
 }
+
+// ---- P2: datasets and indicators ------------------------------------------------------------
+
+export interface Person {
+  id: string;
+  username: string;
+  display_name: string;
+}
+
+export type ColumnRole = "feature" | "target" | "id" | "date" | "ignore";
+export type ColumnType = "numeric" | "category" | "datetime" | "text";
+
+export interface DatasetColumn {
+  position: number;
+  name: string;
+  column_name: string;
+  dtype: ColumnType;
+  role: ColumnRole;
+  missing_rate: number;
+  unique_count: number;
+  iv: number | null;
+  stats: {
+    min?: number | string;
+    max?: number | string;
+    mean?: number;
+    std?: number;
+    p50?: number;
+    top?: { value: string; share: number }[];
+  };
+}
+
+export interface Dataset {
+  id: string;
+  name: string;
+  description: string;
+  source: "upload" | "demo";
+  file_name: string | null;
+  row_count: number;
+  column_count: number;
+  target_column: string | null;
+  target_event: string | null;
+  date_column: string | null;
+  id_column: string | null;
+  bad_rate: number | null;
+  profile: { monthly?: { month: string; rows: number; bad_rate: number | null }[]; date_range?: [string, string] | null };
+  owner: Person | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatasetDetail extends Dataset {
+  columns: DatasetColumn[];
+  indicator_count: number;
+}
+
+export interface Preview {
+  columns: string[];
+  rows: (string | number | null)[][];
+  total: number;
+}
+
+export type BinMethod = "quantile" | "uniform" | "chimerge" | "tree" | "monotonic" | "manual" | "category";
+
+export interface BinSpec {
+  method: BinMethod;
+  bins: number;
+  cuts: number[];
+  special: number[];
+  min_bin_share: number;
+  direction: "auto" | "increasing" | "decreasing";
+  alpha?: number | null;
+}
+
+export interface ScreeningRow {
+  column: string;
+  name: string;
+  dtype: ColumnType;
+  iv: number | null;
+  level: IvLevel | null;
+  trend: Trend | null;
+  bins: number;
+  missing_rate: number;
+  note: string | null;
+  indicator_id: string | null;
+}
+
+export interface RuleBin {
+  code: string;
+  kind: "interval" | "special" | "missing" | "category" | "other";
+  lower?: number | null;
+  upper?: number | null;
+  value?: number | string;
+  count: number;
+  share: number;
+  bad: number;
+  good: number;
+  bad_rate: number | null;
+  woe: number;
+  iv: number;
+}
+
+export interface BinningResult {
+  bins: RuleBin[];
+  iv: number;
+  level: IvLevel;
+  trend: Trend;
+  missing_rate: number;
+  rows: number;
+  bad_rate: number;
+  rule: Record<string, unknown>;
+  notes: string[];
+}
+
+export interface Scheme {
+  id: string;
+  name: string;
+  method: BinMethod;
+  spec: BinSpec;
+  rule: Record<string, unknown>;
+  bins: RuleBin[];
+  iv: number;
+  trend: Trend;
+  missing_rate: number;
+  dataset_id: string | null;
+  author: Person | null;
+  created_at: string;
+}
+
+export type IndicatorCategory = "basic" | "application" | "credit" | "transaction" | "behavior" | "derived" | "other";
+export type IndicatorStatus = "draft" | "published" | "retired";
+
+export interface IndicatorItem {
+  id: string;
+  code: string;
+  name: string;
+  name_en: string | null;
+  category: IndicatorCategory;
+  description: string;
+  kind: "numeric" | "category";
+  unit: Unit;
+  status: IndicatorStatus;
+  column_name: string;
+  dataset: { id: string; name: string; target_column: string | null; date_column: string | null; row_count: number } | null;
+  default_scheme: { id: string; name: string; method: BinMethod; iv: number; trend: Trend; created_at: string } | null;
+  owner: Person | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IndicatorDetail extends IndicatorItem {
+  schemes: Scheme[];
+}
+
+export interface IndicatorPage {
+  items: IndicatorItem[];
+  total: number;
+  counts: Partial<Record<IndicatorCategory, number>>;
+}
+
+export interface Stability {
+  scheme_id: string;
+  reference: [string, string];
+  months: { month: string; rows: number; psi: number | null; bad_rate: number | null; in_reference: boolean; shares: Record<string, number> }[];
+  bins: { code: string; kind: RuleBin["kind"]; lower?: number | null; upper?: number | null; value?: number | string }[];
+}

@@ -120,7 +120,7 @@ export function MonthlyIntakeChart({ monthly, metric }: { monthly: Monthly[]; me
               { label: i18n.t("overview.applicationsMetric"), value: i18n.num(d.applications) },
               { label: i18n.t("overview.badRateMetric"), value: i18n.pct(d.bad_rate, 2) },
             ]}
-            footer={d.in_reference ? i18n.t("stability.reference") : i18n.t("stability.monitoring")}
+            footer={monitoring.length ? (d.in_reference ? i18n.t("stability.reference") : i18n.t("stability.monitoring")) : undefined}
           />
         );
       }}

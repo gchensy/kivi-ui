@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 
 import { api, ApiError } from "./api";
-import type { Analytics, User } from "./types";
+import type { Analytics, Dataset, DatasetDetail, IndicatorDetail, IndicatorPage, User } from "./types";
 
 export const meKey = ["auth", "me"] as const;
 
@@ -35,4 +35,24 @@ export function useSignOut() {
       router.replace("/login");
     },
   });
+}
+
+export function useDatasets() {
+  return useQuery({ queryKey: ["datasets"], queryFn: ({ signal }) => api<Dataset[]>("/datasets", { signal }) });
+}
+
+export function useDataset(id: string) {
+  return useQuery({ queryKey: ["datasets", id], queryFn: ({ signal }) => api<DatasetDetail>(`/datasets/${id}`, { signal }) });
+}
+
+export function useIndicators(params: URLSearchParams) {
+  const qs = params.toString();
+  return useQuery({
+    queryKey: ["indicators", "list", qs],
+    queryFn: ({ signal }) => api<IndicatorPage>(`/indicators${qs ? `?${qs}` : ""}`, { signal }),
+  });
+}
+
+export function useIndicator(id: string) {
+  return useQuery({ queryKey: ["indicators", id], queryFn: ({ signal }) => api<IndicatorDetail>(`/indicators/${id}`, { signal }) });
 }

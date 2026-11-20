@@ -5,7 +5,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, Enum, ForeignKey, Identity, String, func
+from sqlalchemy import BigInteger, Enum, ForeignKey, Identity, String, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -70,3 +71,115 @@ class AnalyticsSnapshot(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     payload: Mapped[dict[str, Any]]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+# ---- P2: datasets, indicators, binning schemes --------------------------------------------
+
+
+class Dataset(Base):
+    """An uploaded sample, stored as a physical table in the ``kivi_data`` schema."""
+
+    __tablename__ = "datasets"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str] = mapped_column(String(1000), default="")
+    source: Mapped[str] = mapped_column(String(16), default="upload")  # upload | demo
+    file_name: Mapped[str | None] = mapped_column(String(255))
+    table_name: Mapped[str] = mapped_column(String(63), unique=True)
+    row_count: Mapped[int] = mapped_column(default=0)
+    column_count: Mapped[int] = mapped_column(default=0)
+    target_column: Mapped[str | None] = mapped_column(String(63))
+    target_event: Mapped[str | None] = mapped_column(String(64))
+    date_column: Mapped[str | None] = mapped_column(String(63))
+    id_column: Mapped[str | None] = mapped_column(String(63))
+    bad_rate: Mapped[float | None]
+    profile: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    owner: Mapped[User | None] = relationship(lazy="joined")
+    columns: Mapped[list["DatasetColumn"]] = relationship(
+        back_populates="dataset", cascade="all, delete-orphan", order_by="DatasetColumn.position"
+    )
+
+
+class DatasetColumn(Base):
+    __tablename__ = "dataset_columns"
+    __table_args__ = (UniqueConstraint("dataset_id", "column_name"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    dataset_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int]
+    name: Mapped[str] = mapped_column(String(255))  # header as uploaded
+    column_name: Mapped[str] = mapped_column(String(63))  # sanitized SQL name
+    dtype: Mapped[str] = mapped_column(String(16))  # numeric | category | datetime | text
+    role: Mapped[str] = mapped_column(String(16), default="feature")  # feature | target | id | date | ignore
+    missing_rate: Mapped[float] = mapped_column(default=0.0)
+    unique_count: Mapped[int] = mapped_column(default=0)
+    iv: Mapped[float | None]
+    stats: Mapped[dict[str, Any]] = mapped_column(default=dict)
+
+    dataset: Mapped[Dataset] = relationship(back_populates="columns")
+
+
+class Indicator(Base):
+    __tablename__ = "indicators"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(128))
+    name_en: Mapped[str | None] = mapped_column(String(128))
+    category: Mapped[str] = mapped_column(String(16), default="other")
+    description: Mapped[str] = mapped_column(String(2000), default="")
+    kind: Mapped[str] = mapped_column(String(16))  # numeric | category
+    unit: Mapped[str | None] = mapped_column(String(16))  # count | ratio | cny | years
+    status: Mapped[str] = mapped_column(String(16), default="draft")  # draft | published | retired
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("datasets.id", ondelete="SET NULL"))
+    column_name: Mapped[str] = mapped_column(String(63))
+    default_scheme_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "binning_schemes.id", ondelete="SET NULL", use_alter=True, name="fk_indicator_default_scheme"
+        )
+    )
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    owner: Mapped[User | None] = relationship(lazy="joined")
+    dataset: Mapped[Dataset | None] = relationship(lazy="joined")
+    default_scheme: Mapped["BinningScheme | None"] = relationship(
+        foreign_keys=[default_scheme_id], lazy="joined", post_update=True
+    )
+    schemes: Mapped[list["BinningScheme"]] = relationship(
+        foreign_keys="BinningScheme.indicator_id",
+        back_populates="indicator",
+        cascade="all, delete-orphan",
+        order_by="BinningScheme.created_at.desc()",
+    )
+
+
+class BinningScheme(Base):
+    """A saved binning of an indicator: the fitted rule plus its bin report."""
+
+    __tablename__ = "binning_schemes"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    indicator_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("indicators.id", ondelete="CASCADE"), index=True
+    )
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("datasets.id", ondelete="SET NULL"))
+    name: Mapped[str] = mapped_column(String(128))
+    method: Mapped[str] = mapped_column(String(16))
+    spec: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    rule: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    bins: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    iv: Mapped[float]
+    trend: Mapped[str] = mapped_column(String(16))
+    missing_rate: Mapped[float] = mapped_column(default=0.0)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    indicator: Mapped[Indicator] = relationship(foreign_keys=[indicator_id], back_populates="schemes")
+    author: Mapped[User | None] = relationship(foreign_keys=[created_by], lazy="joined")

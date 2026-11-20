@@ -29,6 +29,14 @@ def install_error_handlers(app: FastAPI) -> None:
     async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
         return JSONResponse(_body(exc.code, exc.message, exc.detail), status_code=exc.status)
 
+    from .analytics.binning import BinningError
+    from .data.store import DataError
+
+    @app.exception_handler(DataError)
+    @app.exception_handler(BinningError)
+    async def _data_error(_: Request, exc: DataError | BinningError) -> JSONResponse:
+        return JSONResponse(jsonable_encoder(_body(exc.code, str(exc), exc.detail or None)), status_code=400)
+
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:
         errors = [

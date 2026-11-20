@@ -1,192 +1,271 @@
 "use client";
 
-import { useState } from "react";
+import { RiAddLine, RiSearchLine } from "@remixicon/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Chip } from "@/components/base/badges/chip";
-import { Select, SelectItem } from "@/components/base/select/select";
+import { Button } from "@/components/base/buttons/button";
+import { Input } from "@/components/base/input/input";
+import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
+import { Textarea } from "@/components/base/textarea/textarea";
 import { PageHeader } from "@/components/kivi/app-shell";
-import { BinChart, IvRankingChart, type BinMetric } from "@/components/kivi/charts/indicators";
-import { Legend } from "@/components/kivi/charts/kit";
-import { ChartPanel, DataTable, MetricSwitch } from "@/components/kivi/panel";
-import { ErrorState, PageSkeleton } from "@/components/kivi/states";
-import { binLabel } from "@/lib/format";
+import { IvRankingChart } from "@/components/kivi/charts/indicators";
+import { FormError } from "@/components/kivi/form-error";
+import { Modal } from "@/components/kivi/modal";
+import { ChartPanel, DataTable } from "@/components/kivi/panel";
+import { SelectField } from "@/components/kivi/select-field";
+import { ErrorState, Skeleton } from "@/components/kivi/states";
+import { api, ApiError, errorMessage } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/provider";
-import { useAnalytics } from "@/lib/queries";
-import type { Indicator, IvLevel } from "@/lib/types";
+import { CATEGORIES, indicatorName, ivLevel as levelOf, LEVEL_CHIP } from "@/lib/indicators";
+import { useDatasets, useIndicators } from "@/lib/queries";
+import type { DatasetDetail, IndicatorCategory, IndicatorDetail, IndicatorItem, IndicatorStatus } from "@/lib/types";
 
-const LEVEL_CHIP: Record<IvLevel, "neutral" | "yellow" | "cyan" | "blue" | "purple"> = {
-  useless: "neutral",
-  weak: "yellow",
-  medium: "cyan",
-  strong: "blue",
-  suspicious: "purple",
-};
+const STATUSES: IndicatorStatus[] = ["draft", "published", "retired"];
+const STATUS_CHIP = { draft: "yellow", published: "lime", retired: "neutral" } as const;
 
-function Fact({ label, value }: { label: string; value: React.ReactNode }) {
+function CreateModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { t } = useI18n();
+  const router = useRouter();
+  const client = useQueryClient();
+  const datasets = useDatasets();
+  const [datasetId, setDatasetId] = useState<string>("");
+  const [column, setColumn] = useState<string>("");
+  const [code, setCode] = useState("");
+  const [category, setCategory] = useState<IndicatorCategory>("other");
+  const [unit, setUnit] = useState<string>("none");
+  const [error, setError] = useState<string | null>(null);
+  const [invalid, setInvalid] = useState<string[]>([]);
+  const detail = useQuery({
+    queryKey: ["datasets", datasetId],
+    queryFn: () => api<DatasetDetail>(`/datasets/${datasetId}`),
+    enabled: Boolean(datasetId),
+  });
+  const features = (detail.data?.columns ?? []).filter((c) => c.role === "feature" && (c.dtype === "numeric" || c.dtype === "category"));
+  const create = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api<IndicatorDetail>("/indicators", { body }),
+    onSuccess: (indicator) => {
+      client.invalidateQueries({ queryKey: ["indicators"] });
+      onClose();
+      router.push(`/indicators/${indicator.id}`);
+    },
+    onError: (err) => {
+      setError(errorMessage(err, t));
+      if (err instanceof ApiError) setInvalid([...err.fields, ...(err.code === "code_taken" ? ["code"] : [])]);
+    },
+  });
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    create.mutate({
+      dataset_id: datasetId,
+      column,
+      code,
+      name: String(form.get("name") ?? ""),
+      name_en: String(form.get("name_en") ?? "") || null,
+      description: String(form.get("description") ?? ""),
+      category,
+      unit: unit === "none" ? null : unit,
+      status: "draft",
+    });
+  };
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 rounded-xl bg-background-primary-default px-3 py-2 shadow-card">
-      <span className="truncate text-caption-1-medium text-text-tertiary">{label}</span>
-      <span className="truncate text-body-semibold text-text-primary">{value}</span>
-    </div>
+    <Modal isOpen={isOpen} onClose={onClose} title={t("ind.createTitle")} description={t("ind.createDesc")}>
+      <form onSubmit={submit} className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto pe-1" noValidate>
+        <div className="grid grid-cols-2 gap-3">
+          <SelectField
+            label={t("ind.dataset")}
+            value={datasetId}
+            onChange={(v) => {
+              setDatasetId(v);
+              setColumn("");
+            }}
+            options={(datasets.data ?? []).map((d) => ({ id: d.id, label: d.name }))}
+          />
+          <SelectField
+            label={t("ind.column")}
+            value={column}
+            onChange={(v) => {
+              setColumn(v);
+              if (!code) setCode(/^[a-z]/.test(v) ? v : `x_${v}`);
+            }}
+            options={features.map((c) => ({ id: c.column_name, label: c.name }))}
+            isDisabled={!features.length}
+          />
+        </div>
+        <Input label={t("ind.code")} hint={t("ind.codeHint")} value={code} onChange={setCode} inputDir="ltr" isRequired isInvalid={invalid.includes("code")} />
+        <div className="grid grid-cols-2 gap-3">
+          <Input name="name" label={t("ind.name")} isRequired isInvalid={invalid.includes("name")} />
+          <Input name="name_en" label={t("ind.nameEn")} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <SelectField label={t("ind.category")} value={category} onChange={(v) => setCategory(v as IndicatorCategory)} options={CATEGORIES.map((c) => ({ id: c, label: t(`ind.categories.${c}`) }))} />
+          <SelectField label={t("ind.unit")} value={unit} onChange={setUnit} options={["none", "count", "ratio", "cny", "years"].map((u) => ({ id: u, label: t(`ind.units.${u}`) }))} />
+        </div>
+        <Textarea name="description" label={t("ind.description")} rows={2} />
+        <FormError message={error} />
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="submit" disabled={create.isPending || !datasetId || !column || !code}>{t("ind.create")}</Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
 export default function IndicatorsPage() {
   const i18n = useI18n();
   const { t } = i18n;
-  const query = useAnalytics();
-  const [active, setActive] = useState<string | null>(null);
-  const [metric, setMetric] = useState<BinMetric>("woe");
-
-  if (query.error) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  if (!query.data) return <PageSkeleton />;
-  const { indicators, meta } = query.data;
-  const current: Indicator = indicators.find((s) => s.name === active) ?? indicators[0];
-  const trainBad = current.bins.reduce((s, b) => s + b.bad, 0) / current.bins.reduce((s, b) => s + b.count, 0);
-  const f = (v: number, d = 3) => i18n.num(v, { minimumFractionDigits: d, maximumFractionDigits: d });
+  const router = useRouter();
+  const [category, setCategory] = useState<string>("all");
+  const [status, setStatus] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const [q, setQ] = useState("");
+  const [creating, setCreating] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setQ(search.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+  const params = useMemo(() => {
+    const p = new URLSearchParams();
+    if (category !== "all") p.set("category", category);
+    if (status !== "all") p.set("status", status);
+    if (q) p.set("q", q);
+    return p;
+  }, [category, status, q]);
+  const list = useIndicators(params);
+  const data = list.data;
+  const counts = data?.counts ?? {};
+  const total = Object.values(counts).reduce((a, b) => a + (b ?? 0), 0);
+  const name = (item: IndicatorItem) => indicatorName(item, i18n.locale);
+  const ranked = (data?.items ?? []).filter((i) => i.default_scheme).slice(0, 16);
 
   return (
     <>
-      <PageHeader
-        title={t("indicators.title")}
-        subtitle={t("indicators.subtitle", {
-          start: i18n.month(meta.sample.train_months[0], true),
-          end: i18n.month(meta.sample.train_months[1], true),
-          rows: i18n.num(meta.sample.train_rows),
-        })}
-      />
-      <div className="grid gap-4 xl:grid-cols-5">
-        <ChartPanel
-          className="xl:col-span-2"
-          title={t("indicators.ivRanking")}
-          description={t("indicators.ivRankingDesc")}
-          legend={
-            <Legend
-              items={[
-                { label: t("indicators.selected"), color: "var(--viz-1)" },
-                { label: t("indicators.notSelected"), color: "var(--viz-neutral)" },
-              ]}
-            />
-          }
-          chartClassName="h-[420px]"
-          chart={<IvRankingChart indicators={indicators} active={current.name} onSelect={setActive} />}
-          table={
-            <DataTable
-              columns={[
-                { key: "name", label: t("indicators.feature") },
-                { key: "iv", label: t("indicators.iv"), align: "end" },
-                { key: "level", label: t("indicators.level") },
-                { key: "trend", label: t("indicators.trend") },
-                { key: "missing", label: t("indicators.missingRate"), align: "end" },
-              ]}
-              rows={indicators.map((s) => ({
-                key: s.name,
-                cells: {
-                  name: (
-                    <button type="button" className="cursor-pointer text-start hover:underline" onClick={() => setActive(s.name)}>
-                      {i18n.pick(s.label)}
-                      {s.selected ? " ✓" : ""}
-                    </button>
-                  ),
-                  iv: f(s.iv),
-                  level: t(`indicators.levels.${s.level}`),
-                  trend: t(`indicators.trends.${s.trend}`),
-                  missing: i18n.pct(s.missing_rate),
-                },
-              }))}
-            />
-          }
-        />
+      <PageHeader title={t("ind.title")} subtitle={t("ind.subtitle")} actions={<Button leadingIcon={RiAddLine} onClick={() => setCreating(true)}>{t("ind.create")}</Button>} />
+      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+        <SegmentedControl aria-label={t("ind.category")} selectedKeys={new Set([category])} onSelectionChange={(keys) => setCategory(String([...keys][0] ?? "all"))}>
+          <SegmentedControlItem id="all">
+            <span className="flex items-center gap-1.5">
+              {t("ind.all")}
+              <span className="text-caption-1-medium text-text-tertiary tabular-nums">{total}</span>
+            </span>
+          </SegmentedControlItem>
+          {CATEGORIES.filter((c) => counts[c]).map((c) => (
+            <SegmentedControlItem key={c} id={c}>
+              <span className="flex items-center gap-1.5">
+                {t(`ind.categories.${c}`)}
+                <span className="text-caption-1-medium text-text-tertiary tabular-nums">{counts[c]}</span>
+              </span>
+            </SegmentedControlItem>
+          ))}
+        </SegmentedControl>
+        <div className="flex items-center gap-2">
+          <SelectField
+            className="w-[140px]"
+            size="sm"
+            value={status}
+            onChange={setStatus}
+            options={[{ id: "all", label: t("ind.allStatus") }, ...STATUSES.map((s) => ({ id: s, label: t(`ind.statuses.${s}`) }))]}
+          />
+          <Input aria-label={t("common.search")} placeholder={t("ind.searchPlaceholder")} leadingIcon={RiSearchLine} value={search} onChange={setSearch} size="small" className="w-[220px]" />
+        </div>
+      </div>
 
-        <div className="flex min-w-0 flex-col gap-4 xl:col-span-3">
-          <section className="flex flex-col gap-3 rounded-2xl bg-background-secondary-default p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <h2 className="truncate text-title-3-semibold text-text-primary">{i18n.pick(current.label)}</h2>
-                <code className="rounded-md bg-background-tertiary-default px-1.5 py-0.5 font-mono text-caption-1-medium text-text-secondary">{current.name}</code>
-                {current.selected && <Chip variant="subtle" color="blue">{t("indicators.selected")}</Chip>}
-              </div>
-              <Select
-                aria-label={t("indicators.feature")}
-                size="sm"
-                selectedKey={current.name}
-                onSelectionChange={(key) => key && setActive(String(key))}
-                className="w-[200px]"
-              >
-                {indicators.map((s) => (
-                  <SelectItem key={s.name} id={s.name} textValue={i18n.pick(s.label)}>
-                    {i18n.pick(s.label)}
-                  </SelectItem>
-                ))}
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-              <Fact label={t("indicators.iv")} value={f(current.iv)} />
-              <Fact
-                label={t("indicators.level")}
-                value={<Chip variant="subtle" color={LEVEL_CHIP[current.level]}>{t(`indicators.levels.${current.level}`)}</Chip>}
-              />
-              <Fact label={t("indicators.trend")} value={t(`indicators.trends.${current.trend}`)} />
-              <Fact label={t("indicators.missingRate")} value={i18n.pct(current.missing_rate)} />
-              <Fact label={t("indicators.type")} value={`${t(`indicators.${current.kind}`)} · ${t("indicators.binCount", { n: current.bins.length })}`} />
-            </div>
-          </section>
-
+      {list.error ? (
+        <ErrorState error={list.error} onRetry={() => list.refetch()} />
+      ) : !data ? (
+        <Skeleton className="h-[480px]" />
+      ) : data.items.length === 0 ? (
+        <p className="rounded-2xl bg-background-secondary-default py-16 text-center text-body-regular text-text-tertiary">{t("ind.empty")}</p>
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-5">
           <ChartPanel
-            title={t("indicators.detail")}
-            description={t(metric === "woe" ? "indicators.woeDesc" : metric === "bad_rate" ? "indicators.badRateDesc" : "indicators.shareDesc")}
-            controls={
-              <MetricSwitch
-                label={t("indicators.detail")}
-                value={metric}
-                onChange={setMetric}
-                options={[
-                  { id: "woe", label: t("indicators.metricWoe") },
-                  { id: "bad_rate", label: t("indicators.metricBadRate") },
-                  { id: "share", label: t("indicators.metricShare") },
-                ]}
+            className="xl:col-span-2"
+            title={t("ind.ranking")}
+            description={t("ind.rankingDesc")}
+            chartClassName="h-[460px]"
+            chart={
+              <IvRankingChart
+                items={ranked.map((item) => ({
+                  key: item.id,
+                  label: name(item),
+                  iv: item.default_scheme!.iv,
+                  selected: item.status === "published",
+                  level: levelOf(item.default_scheme!.iv),
+                  trend: item.default_scheme!.trend,
+                }))}
+                onSelect={(key) => router.push(`/indicators/${key}`)}
+                selectedLabel={t("ind.statuses.published")}
+                unselectedLabel={`${t("ind.statuses.draft")} / ${t("ind.statuses.retired")}`}
               />
             }
-            legend={
-              metric === "woe" ? (
-                <Legend
-                  items={[
-                    { label: t("indicators.higherRisk"), color: "var(--viz-pos)" },
-                    { label: t("indicators.lowerRisk"), color: "var(--viz-neg)" },
-                  ]}
-                />
-              ) : undefined
-            }
-            chartClassName="h-[300px]"
-            chart={<BinChart indicator={current} metric={metric} overallBadRate={trainBad} />}
             table={
               <DataTable
                 columns={[
-                  { key: "bin", label: t("indicators.bin") },
-                  { key: "count", label: t("indicators.count"), align: "end" },
-                  { key: "share", label: t("indicators.share"), align: "end" },
-                  { key: "bad", label: t("indicators.bad"), align: "end" },
-                  { key: "rate", label: t("indicators.badRate"), align: "end" },
-                  { key: "woe", label: t("indicators.woe"), align: "end" },
-                  { key: "iv", label: t("indicators.iv"), align: "end" },
+                  { key: "name", label: t("ind.indicator") },
+                  { key: "iv", label: "IV", align: "end" },
                 ]}
-                rows={current.bins.map((b) => ({
-                  key: String(b.code),
-                  cells: {
-                    bin: binLabel(b, current.unit, i18n),
-                    count: i18n.num(b.count),
-                    share: i18n.pct(b.share),
-                    bad: i18n.num(b.bad),
-                    rate: i18n.pct(b.bad_rate, 2),
-                    woe: f(b.woe),
-                    iv: f(b.iv, 4),
-                  },
-                }))}
+                rows={ranked.map((item) => ({ key: item.id, cells: { name: name(item), iv: i18n.num(item.default_scheme!.iv, { minimumFractionDigits: 3 }) } }))}
               />
             }
           />
+          <section className="flex min-w-0 flex-col gap-3 rounded-2xl bg-background-secondary-default p-4 xl:col-span-3">
+            <div className={`overflow-x-auto rounded-xl bg-background-primary-default ${list.isFetching ? "opacity-60" : ""}`}>
+              <table className="bui-table bui-table-sm">
+                <thead>
+                  <tr>
+                    <th>{t("ind.indicator")}</th>
+                    <th>{t("ind.category")}</th>
+                    <th className="!text-end">IV</th>
+                    <th>{t("ind.scheme")}</th>
+                    <th>{t("ind.status")}</th>
+                    <th>{t("ind.source")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map((item) => {
+                    const scheme = item.default_scheme;
+                    return (
+                      <tr key={item.id} className="cursor-pointer hover:bg-background-secondary-hover" onClick={() => router.push(`/indicators/${item.id}`)}>
+                        <td>
+                          <Link href={`/indicators/${item.id}`} className="flex flex-col outline-none focus-visible:underline" onClick={(e) => e.stopPropagation()}>
+                            <span className="text-body-2-medium text-text-primary">{name(item)}</span>
+                            <code className="font-mono text-caption-2-regular text-text-tertiary">{item.code}</code>
+                          </Link>
+                        </td>
+                        <td className="whitespace-nowrap text-text-secondary">{t(`ind.categories.${item.category}`)}</td>
+                        <td className="text-end">
+                          {scheme ? (
+                            <span className="flex items-center justify-end gap-2">
+                              <span className="tabular-nums">{i18n.num(scheme.iv, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
+                              <Chip variant="subtle" color={LEVEL_CHIP[levelOf(scheme.iv)]}>{t(`indicators.levels.${levelOf(scheme.iv)}`)}</Chip>
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap text-text-secondary">
+                          {scheme ? t(`ind.methods.${scheme.method}`) : t("ind.noScheme")}
+                        </td>
+                        <td>
+                          <Chip variant="subtle" color={STATUS_CHIP[item.status]}>{t(`ind.statuses.${item.status}`)}</Chip>
+                        </td>
+                        <td className="max-w-[140px] truncate text-text-tertiary" title={item.dataset?.name}>{item.dataset?.name ?? t("ind.datasetMissing")}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <span className="text-body-2-regular text-text-tertiary">{t("common.total", { n: data.total })}</span>
+          </section>
         </div>
-      </div>
+      )}
+      <CreateModal isOpen={creating} onClose={() => setCreating(false)} />
     </>
   );
 }

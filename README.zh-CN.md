@@ -245,6 +245,8 @@ pnpm typecheck && pnpm build
 
 每个 Pull Request 都会在 CI 中运行同样的检查。
 
+重拍 README 截图：先用演示数据启动后端与前端，再运行 `node scripts/screenshots.mjs`（需要 Chrome；传入 `overview,alerts` 等名称可只重拍这几张）。
+
 ## 📄 许可证
 
 [MIT](LICENSE)。BoardUI 组件与 kivi 均采用 MIT 许可证，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

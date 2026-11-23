@@ -245,6 +245,8 @@ pnpm typecheck && pnpm build
 
 CI runs the same checks on every pull request.
 
+To retake the README screenshots, run the API and web app with the demo data, then `node scripts/screenshots.mjs` (needs Chrome; pass names such as `overview,alerts` to retake only those).
+
 ## 📄 License
 
 [MIT](LICENSE). BoardUI components are MIT licensed and kivi is MIT licensed; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
